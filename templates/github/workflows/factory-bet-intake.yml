@@ -1,0 +1,79 @@
+name: "Factory: bet intake"
+
+# Runs the bet skill in intake mode. It reads vision.md, bets.md and TODOS.md,
+# drafts up to 3 issues that move an open bet (or clearly bounded maintenance),
+# and dispatches triage for each one.
+#
+# Issues created with GITHUB_TOKEN don't fire `issues: opened`, so this workflow
+# dispatches triage explicitly. Manual by default. Uncomment the schedule once
+# bets.md is in use.
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 14 * * 1" # Mondays 14:00 UTC
+
+concurrency:
+  group: factory-bet-intake
+  cancel-in-progress: false
+
+jobs:
+  intake:
+    name: Draft issues from bets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+      actions: write # dispatch triage for the new issues
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Require bets.md
+        id: bets
+        run: |
+          if [ -f bets.md ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No bets.md in this repository; run the bet skill locally first."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Intake with Claude
+        id: intake
+        if: steps.bets.outputs.present == 'true'
+        uses: anthropics/claude-code-action@v1.0.245
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLAUDE_CODE_EFFORT_LEVEL: ${{ vars.FACTORY_EFFORT_BET || 'medium' }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Run the bet skill in intake mode for ${{ github.repository }}.
+
+            First read `.claude/skills/bet/SKILL.md`, then follow its intake mode
+            exactly: at most 3 new issues, each tied to an open bet in bets.md or
+            to a clearly bounded maintenance item in TODOS.md, with no duplicates
+            of open issues. Return the numbers of the issues you created.
+          claude_args: |
+            --model ${{ vars.FACTORY_MODEL_BET || 'claude-sonnet-5-5' }}
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*),Bash(gh label list:*),Bash(gh label create:*)"
+            --json-schema '{"type":"object","additionalProperties":false,"required":["issues"],"properties":{"issues":{"type":"array","maxItems":3,"items":{"type":"integer"}}}}'
+
+      - name: Dispatch triage
+        if: steps.bets.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RESULT: ${{ steps.intake.outputs.structured_output }}
+        run: |
+          set -euo pipefail
+          [ -n "${RESULT:-}" ] || RESULT='{"issues":[]}'
+          jq -r '.issues[]' <<<"$RESULT" | head -3 | while IFS= read -r n; do
+            echo "Dispatching triage for #$n"
+            gh workflow run factory-triage.yml --repo "$REPO" -f issue_number="$n"
+          done

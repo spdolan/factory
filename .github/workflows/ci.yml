@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint workflow templates
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color templates/github/workflows/*.yml .github/workflows/*.yml
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Validate Terraform module
+        working-directory: infra/modules/factory-repo
+        run: |
+          terraform fmt -check -recursive ../../
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: Lint installer
+        run: shellcheck scripts/install-factory.sh
+
+      - name: Compile skill scripts
+        run: python3 -m py_compile skills/*/scripts/*.py
+
+      - name: Check skill frontmatter
+        run: |
+          set -euo pipefail
+          for f in skills/*/SKILL.md; do
+            name="$(basename "$(dirname "$f")")"
+            head -1 "$f" | grep -qx -- '---' || { echo "$f: no frontmatter"; exit 1; }
+            grep -qx "name: $name" "$f" || { echo "$f: name must be $name"; exit 1; }
+            grep -q '^description: ' "$f" || { echo "$f: no description"; exit 1; }
+          done
+
+      - name: Installer smoke test
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          git -C "$tmp" init -q
+          (cd "$tmp" && "$GITHUB_WORKSPACE/scripts/install-factory.sh")
+          test -f "$tmp/.claude/skills/triage/SKILL.md"
+          test -f "$tmp/.github/workflows/factory-triage.yml"
+          test -f "$tmp/FACTORY.md"
+          echo "local edit" >> "$tmp/.claude/skills/review-pr/SKILL.md"
+          (cd "$tmp" && "$GITHUB_WORKSPACE/scripts/install-factory.sh") | grep -q 'keep    .claude/skills/review-pr/SKILL.md'
+          grep -q 'local edit' "$tmp/.claude/skills/review-pr/SKILL.md"

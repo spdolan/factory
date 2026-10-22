@@ -1,0 +1,6 @@
+.state/
+.terragrunt-cache/
+.terraform/
+.terraform.lock.hcl
+backend.tf
+provider.tf
