@@ -12,10 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A docker:// step passes args without shell expansion, so run the binary from the shell.
       - name: Lint workflow templates
-        uses: docker://rhysd/actionlint:1.7.7
-        with:
-          args: -color templates/github/workflows/*.yml .github/workflows/*.yml
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color templates/github/workflows/*.yml .github/workflows/*.yml
 
       - uses: hashicorp/setup-terraform@v3
 
