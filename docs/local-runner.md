@@ -1,0 +1,51 @@
+# Local sessions on a self-hosted runner
+
+`factory-local.yml` runs the implement or spec stage as a background Claude Code session on your own machine, instead of inside a GitHub-hosted job. The Actions job only dispatches the work. It updates a clone, starts `claude --bg --worktree gh-<n>`, posts the session ID on the issue, and exits. The session keeps running with the machine owner's Claude login (billed to the subscription) and `gh` auth, and opens the PR itself.
+
+Use it for work that needs what only this machine has: local databases, private data, gstack's browser, or macOS. You can watch it and step in with `claude agents` or `claude attach <id>`.
+
+Start a session by adding `factory:local` to an issue that has `ready-to-implement` or `ready-to-spec`, or by running the workflow with an issue number. Model and effort follow the same tiers as the hosted workflows.
+
+## Setup, once per machine
+
+1. **Update the CLI.** Background sessions need a recent version (2.1.300 or later has `--bg` and `--worktree`):
+   ```bash
+   brew upgrade --cask claude-code
+   ```
+2. **Sign the CLI in.** The CLI's login is separate from the desktop app's. Check that `subscriptionType` shows your plan, not API billing:
+   ```bash
+   claude auth login && claude auth status
+   ```
+   Unset `ANTHROPIC_API_KEY` in the runner's environment. The workflow also unsets it before starting the session.
+
+## Setup, once per repository
+
+1. **Register a runner** with the label `factory`. GitHub publishes a checksum for each release, so verify the download against it:
+   ```bash
+   mkdir -p ~/actions-runner/<repo> && cd ~/actions-runner/<repo>
+   ```
+   Download `actions-runner-osx-arm64-<version>.tar.gz` from https://github.com/actions/runner/releases, verify it, extract it, then:
+   ```bash
+   ./config.sh --unattended --url https://github.com/spdolan/<repo> --token "$(gh api -X POST repos/spdolan/<repo>/actions/runners/registration-token -q .token)" --name "$(scutil --get LocalHostName)-factory" --labels factory --work _work
+   ```
+   ```bash
+   ./svc.sh install && ./svc.sh start
+   ```
+   The service is a LaunchAgent, so it runs while you're logged in. Personal-account repositories each need their own runner registration.
+2. **Clone the repository for sessions** over HTTPS, using `gh` for credentials. A LaunchAgent can't always reach your ssh-agent, and the job's token expires when the job ends.
+   ```bash
+   mkdir -p ~/factory-work && cd ~/factory-work && git -c credential.helper='!gh auth git-credential' clone https://github.com/spdolan/<repo>.git
+   ```
+   ```bash
+   cd ~/factory-work/<repo> && git config credential.helper '!gh auth git-credential'
+   ```
+   Set `FACTORY_WORK_DIR` (a repository variable) to use a different parent folder.
+3. **Trust the clone.** Background sessions refuse untrusted folders. Run `claude` in `~/factory-work/<repo>`, choose **Yes, I trust this folder**, and exit.
+
+## Things to know
+
+- **Worktrees stay** under `<clone>/.claude/worktrees/gh-<n>` after a session ends, so you can inspect them. Remove one with `git worktree remove --force --force <path>` once its PR has merged.
+- **Pass the prompt first.** `--allowedTools` and `--disallowedTools` take lists and swallow any argument after them, so the workflow passes the prompt as the first argument.
+- **The agent runs as you**, with access to everything your user can reach. The workflow forbids force-pushes, merges and `sudo`. For stronger isolation, use a dedicated machine or macOS user with its own Claude login and a GitHub token limited to its repositories.
+- **The machine must be awake.** A queued job waits until the runner is back online.
+- **Cost:** self-hosted runner minutes are free on GitHub (the announced platform fee was postponed), and the session draws on your subscription's usage limits.

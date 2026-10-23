@@ -1,0 +1,4 @@
+# Custom labels of self-hosted runners used by the factory workflows.
+self-hosted-runner:
+  labels:
+    - factory
