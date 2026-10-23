@@ -73,3 +73,34 @@ resource "github_workflow_repository_permissions" "this" {
   default_workflow_permissions     = "read"
   can_approve_pull_request_reviews = true
 }
+
+variable "protect_default_branch" {
+  description = "Require a pull request and block force-pushes and deletion on the default branch, with no bypass. Needs GitHub Pro or higher for private repositories."
+  type        = bool
+  default     = false
+}
+
+# The server-side control that stops any credential, including an agent
+# session's, from pushing straight to the default branch.
+resource "github_repository_ruleset" "default_branch" {
+  count       = var.protect_default_branch ? 1 : 0
+  name        = "factory: protect default branch"
+  repository  = var.repository
+  target      = "branch"
+  enforcement = "active"
+
+  conditions {
+    ref_name {
+      include = ["~DEFAULT_BRANCH"]
+      exclude = []
+    }
+  }
+
+  rules {
+    deletion         = true
+    non_fast_forward = true
+    pull_request {
+      required_approving_review_count = 0
+    }
+  }
+}
