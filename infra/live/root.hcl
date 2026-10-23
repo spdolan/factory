@@ -51,19 +51,19 @@ inputs = {
   # Cheapest defaults: Haiku where the risk is low, Sonnet where judgment
   # matters, Opus only for invariant-risk work. Medium effort throughout.
   variables = {
-    FACTORY_AUTONOMY               = "standard"
-    FACTORY_MODEL_TRIAGE           = "claude-haiku-5-5"
-    FACTORY_MODEL_IMPLEMENT_AGENT  = "claude-haiku-5-5"
-    FACTORY_MODEL_IMPLEMENT        = "claude-sonnet-5-5"
-    FACTORY_MODEL_REVIEW_SMALL     = "claude-haiku-5-5"
-    FACTORY_MODEL_REVIEW           = "claude-sonnet-5-5"
-    FACTORY_MODEL_SPEC             = "claude-sonnet-5-5"
-    FACTORY_MODEL_RISK             = "claude-opus-5-5"
-    FACTORY_MODEL_BUMP             = "claude-haiku-5-5"
-    FACTORY_EFFORT_TRIAGE          = "medium"
-    FACTORY_EFFORT_IMPLEMENT       = "medium"
-    FACTORY_EFFORT_REVIEW          = "medium"
-    FACTORY_REVIEW_SMALL_LINES     = "400"
+    FACTORY_AUTONOMY              = "standard"
+    FACTORY_MODEL_TRIAGE          = "claude-haiku-5-5"
+    FACTORY_MODEL_IMPLEMENT_AGENT = "claude-haiku-5-5"
+    FACTORY_MODEL_IMPLEMENT       = "claude-sonnet-5-5"
+    FACTORY_MODEL_REVIEW_SMALL    = "claude-haiku-5-5"
+    FACTORY_MODEL_REVIEW          = "claude-sonnet-5-5"
+    FACTORY_MODEL_SPEC            = "claude-sonnet-5-5"
+    FACTORY_MODEL_RISK            = "claude-opus-5-5"
+    FACTORY_MODEL_BUMP            = "claude-haiku-5-5"
+    FACTORY_EFFORT_TRIAGE         = "medium"
+    FACTORY_EFFORT_IMPLEMENT      = "medium"
+    FACTORY_EFFORT_REVIEW         = "medium"
+    FACTORY_REVIEW_SMALL_LINES    = "400"
   }
 
   labels = {

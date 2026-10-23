@@ -8,5 +8,7 @@ inputs = {
   repository = "groundwork"
   variables = {
     FACTORY_VERIFY = "true"
+    # Local sessions need gstack's /browse (a user-level skill) for UI checks.
+    FACTORY_LOCAL_SETTING_SOURCES = "user,project,local"
   }
 }
