@@ -52,10 +52,10 @@ resource "github_actions_variable" "this" {
 }
 
 resource "github_actions_secret" "this" {
-  for_each        = toset(var.secret_names)
-  repository      = var.repository
-  secret_name     = each.value
-  plaintext_value = var.secret_values[each.value]
+  for_each    = toset(var.secret_names)
+  repository  = var.repository
+  secret_name = each.value
+  value       = var.secret_values[each.value]
 }
 
 resource "github_issue_label" "this" {

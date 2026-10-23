@@ -12,10 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A docker:// step passes args without shell expansion, so run the binary from the shell.
       - name: Lint workflow templates
-        uses: docker://rhysd/actionlint:1.7.7
-        with:
-          args: -color templates/github/workflows/*.yml .github/workflows/*.yml
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color templates/github/workflows/*.yml .github/workflows/*.yml
 
       - uses: hashicorp/setup-terraform@v3
 
@@ -52,5 +53,7 @@ jobs:
           test -f "$tmp/.github/workflows/factory-triage.yml"
           test -f "$tmp/FACTORY.md"
           echo "local edit" >> "$tmp/.claude/skills/review-pr/SKILL.md"
-          (cd "$tmp" && "$GITHUB_WORKSPACE/scripts/install-factory.sh") | grep -q 'keep    .claude/skills/review-pr/SKILL.md'
+          # Save the output first: grep -q exits early, and the installer's next write would fail with SIGPIPE.
+          (cd "$tmp" && "$GITHUB_WORKSPACE/scripts/install-factory.sh") > reinstall.log
+          grep -q 'keep    .claude/skills/review-pr/SKILL.md' reinstall.log
           grep -q 'local edit' "$tmp/.claude/skills/review-pr/SKILL.md"
