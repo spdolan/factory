@@ -53,5 +53,7 @@ jobs:
           test -f "$tmp/.github/workflows/factory-triage.yml"
           test -f "$tmp/FACTORY.md"
           echo "local edit" >> "$tmp/.claude/skills/review-pr/SKILL.md"
-          (cd "$tmp" && "$GITHUB_WORKSPACE/scripts/install-factory.sh") | grep -q 'keep    .claude/skills/review-pr/SKILL.md'
+          # Save the output first: grep -q exits early, and the installer's next write would fail with SIGPIPE.
+          (cd "$tmp" && "$GITHUB_WORKSPACE/scripts/install-factory.sh") > reinstall.log
+          grep -q 'keep    .claude/skills/review-pr/SKILL.md' reinstall.log
           grep -q 'local edit' "$tmp/.claude/skills/review-pr/SKILL.md"
