@@ -74,7 +74,9 @@ jobs:
             echo "::error::No clone at $dir. See the setup notes at the top of this workflow." >&2
             exit 1
           fi
-          git -C "$dir" fetch -q origin
+          # The clone authenticates with the owner's gh login. Unset the job's token, which
+          # can't read code (issues: write only) and would win over the keyring otherwise.
+          env -u GH_TOKEN -u GITHUB_TOKEN git -C "$dir" fetch -q origin
           git -C "$dir" checkout -q main
           git -C "$dir" merge -q --ff-only origin/main
 
