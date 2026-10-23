@@ -53,11 +53,13 @@ If the issue turns out to be much larger or more ambiguous than triage expected,
 
 ### 8. Validate
 
-Run the validation commands from `FACTORY.md`. If it lists none, use what README, package scripts, Makefiles or CI config document. At minimum, run:
+Run every validation command in `FACTORY.md`, in order, on every change, including docs-only and one-line changes. Don't skip a command because you judge that the change can't affect it: generated code, link checks, doc tests and lockfiles break in ways that are hard to predict, and the PR's validation table is the evidence a reviewer relies on. If `FACTORY.md` lists no commands, use what README, package scripts, Makefiles or CI config document, and at minimum run:
 
 - targeted tests for the changed behavior
 - lint or typecheck
 - the build, if there is one
+
+The only commands you may skip are those `FACTORY.md` marks as needing local-only resources that aren't available, or ones that can't run in this environment (a missing toolchain, database or secret). List each skipped command in the PR with the reason. "Docs only" is not a reason.
 
 Fix failures your change caused. Report unrelated or environment-dependent failures (for example tests that need a local database) clearly in the PR, with the exact command.
 
@@ -80,7 +82,7 @@ The PR body should include:
 - `Closes #<n>` if the change fully resolves the issue, otherwise `Refs #<n>` and what remains
 - links to the specs, if any
 - a short summary of the change
-- each validation command and its result
+- each validation command and its result (pass or fail), plus any skipped command with its reason
 - spec alignment, if specs exist
 - behavior verification: status, evidence location, and blockers
 - consumer impact, if `FACTORY.md` lists consumers
