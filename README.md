@@ -99,6 +99,7 @@ All of them run `anthropics/claude-code-action@v1.0.245`.
 | `factory-bet-intake.yml` | dispatch (schedule commented out) |
 | `factory-notify-consumers.yml` | called from a library's release-please workflow after publishing |
 | `factory-dependency-bump.yml` | `repository_dispatch` from a library release; dispatch |
+| `factory-local.yml` | `factory:local` on a `ready-to-implement` or `ready-to-spec` issue; dispatch. Starts a background Claude Code session on a self-hosted machine ([docs/local-runner.md](docs/local-runner.md)) |
 
 ## Install into a repository
 

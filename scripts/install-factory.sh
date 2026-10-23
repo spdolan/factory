@@ -126,6 +126,7 @@ invariant-risk|B60205|Factory: touches protected paths; Opus and human review
 factory:agent|0E8A16|Factory: small and low risk; agents advance it
 factory:awaiting-approval|FBCA04|Factory: a human must approve the next stage
 factory:approved|0E8A16|Factory: human approval to start the next stage
+factory:local|006B75|Factory: run the next stage as a session on the self-hosted machine
 factory:proposed|EDEDED|Factory: drafted by the bet skill
 maintenance|EDEDED|Bugs, CI, dependencies, security: needs no bet
 LABELS

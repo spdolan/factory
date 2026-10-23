@@ -76,6 +76,7 @@ inputs = {
     "factory:agent"             = { color = "0E8A16", description = "Factory: small and low risk; agents advance it" }
     "factory:awaiting-approval" = { color = "FBCA04", description = "Factory: a human must approve the next stage" }
     "factory:approved"          = { color = "0E8A16", description = "Factory: human approval to start the next stage" }
+    "factory:local"             = { color = "006B75", description = "Factory: run the next stage as a session on the self-hosted machine" }
     "factory:proposed"          = { color = "EDEDED", description = "Factory: drafted by the bet skill" }
     "maintenance"               = { color = "EDEDED", description = "Bugs, CI, dependencies, security: needs no bet" }
   }
