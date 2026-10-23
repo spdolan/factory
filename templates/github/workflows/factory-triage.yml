@@ -170,7 +170,8 @@ jobs:
           esac
 
           {
-            jq -r '.comment' result.json
+            # Models sometimes double-escape line breaks in structured output; undo that.
+            jq -r '.comment | gsub("\\\\n"; "\n")' result.json
             [ -n "$NEXT" ] && printf '\n\n%s' "$NEXT"
             # shellcheck disable=SC2016 # backticks are Markdown
             printf '\n\n---\n_Triage: `%s` · size `%s` · bet `%s` · [run](%s/%s/actions/runs/%s)_\n' \

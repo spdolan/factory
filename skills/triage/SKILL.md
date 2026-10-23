@@ -117,7 +117,7 @@ The state is also the label the workflow applies.
 
 Otherwise choose `human`. When in doubt, choose `human`. The workflow can also be stricter than this: the `FACTORY_AUTONOMY` variable can turn agent advancement off, or limit it to small issues. The workflow ignores any `remove_labels` or `risk_labels` entry outside the readiness labels and `invariant-risk`. `risk_labels` is usually empty. Add `invariant-risk` when the change touches a protected path or could break replay identity, a schema, a wire format, or consumers.
 
-Write `comment` for the issue author: a short first sentence with the decision, the evidence behind it, the bet it serves (or why it is maintenance), and one concrete next step. Don't describe who advances the issue. The workflow appends that line. Use a short bullet list where it helps. Encode line breaks as `\n`, since the comment is a JSON string.
+Write `comment` for the issue author: a short first sentence with the decision, the evidence behind it, the bet it serves (or why it is maintenance), and one concrete next step. Don't describe who advances the issue. The workflow appends that line. Use a short bullet list where it helps. Write real line breaks. The structured output handles JSON encoding, so don't escape them as `\n` yourself.
 
 ## Guardrails
 
