@@ -170,8 +170,10 @@ jobs:
           esac
 
           {
-            # Models sometimes double-escape line breaks in structured output; undo that.
-            jq -r '.comment | gsub("\\\\n"; "\n")' result.json
+            # Models sometimes double-escape line breaks in structured output. Undo that only
+            # when the comment has no real line breaks, so a literal \n in a comment that is
+            # otherwise well formed (an issue about escaping, say) is left alone.
+            jq -r '.comment | if contains("\n") then . else gsub("\\\\n"; "\n") end' result.json
             [ -n "$NEXT" ] && printf '\n\n%s' "$NEXT"
             # shellcheck disable=SC2016 # backticks are Markdown
             printf '\n\n---\n_Triage: `%s` · size `%s` · bet `%s` · [run](%s/%s/actions/runs/%s)_\n' \
