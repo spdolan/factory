@@ -50,7 +50,7 @@ Some steps are always human: approving a spec (by adding `ready-to-implement`), 
 
 | Stage | Default model | When it's bigger |
 |---|---|---|
-| Triage | Haiku 5.5 | Sonnet 5.5 for invariant-heavy or sensitive repositories (plinth, judicial_outcomes) |
+| Triage | Haiku 5.5 | High effort for invariant-heavy or sensitive repositories (plinth, judicial_outcomes). On four plinth test cases it made the same safety calls as Sonnet 5.5, at about a tenth of the cost |
 | Implement | Haiku 5.5 for `factory:agent` issues | Sonnet 5.5 when a human approved it; Opus 5.5 (high effort) for `invariant-risk` |
 | Review | Haiku 5.5 for PRs of ≤400 changed lines | Sonnet 5.5 for larger PRs or `invariant-risk` |
 | Spec | Sonnet 5.5 | Opus 5.5 (high effort) for `invariant-risk` |
