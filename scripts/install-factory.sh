@@ -126,6 +126,7 @@ invariant-risk|B60205|Factory: touches protected paths; Opus and human review
 factory:agent|0E8A16|Factory: small and low risk; agents advance it
 factory:awaiting-approval|FBCA04|Factory: a human must approve the next stage
 factory:approved|0E8A16|Factory: human approval to start the next stage
+factory:local|006B75|Factory: run the next stage as a session on the self-hosted machine
 factory:proposed|EDEDED|Factory: drafted by the bet skill
 maintenance|EDEDED|Bugs, CI, dependencies, security: needs no bet
 LABELS
@@ -136,10 +137,9 @@ cat <<EOF
 Factory@$factory_rev: $installed installed, $unchanged unchanged, $kept kept (changed locally).$( [ "$dry_run" = true ] && echo " Dry run: nothing written.")
 
 Next:
-  1. Fill in FACTORY.md (validation commands, protected paths, consumers, app).
-  2. Add a secret: ANTHROPIC_API_KEY, or CLAUDE_CODE_OAUTH_TOKEN from \`claude setup-token\`.
-  3. Optional: FACTORY_GITHUB_TOKEN (fine-grained; contents, issues and pull requests
-     read/write on this repository) so agent PRs trigger CI and review.
-  4. Optional variables: FACTORY_AUTOCHAIN, FACTORY_VERIFY, FACTORY_TRIAGE_ALL, FACTORY_MODEL_*.
-  5. If the implementation agent needs toolchains, add .github/factory/setup.sh.
+  1. Fill in FACTORY.md (validation commands, protected paths, human-only areas, consumers, app).
+  2. Set secrets, variables and labels: Terragrunt in infra/ or by hand ($FACTORY_DIR/docs/setup.md).
+     Secrets: CLAUDE_CODE_OAUTH_TOKEN (or ANTHROPIC_API_KEY) and FACTORY_GITHUB_TOKEN.
+     Variables: FACTORY_AUTONOMY, FACTORY_VERIFY, FACTORY_TRIAGE_ALL, FACTORY_MODEL_*, FACTORY_EFFORT_*.
+  3. If agents need toolchains or registry credentials, add .github/factory/setup.sh.
 EOF
