@@ -46,6 +46,9 @@ Start a session by adding `factory:local` to an issue that has `ready-to-impleme
 
 - **Worktrees stay** under `<clone>/.claude/worktrees/gh-<n>` after a session ends, so you can inspect them. Remove one with `git worktree remove --force --force <path>` once its PR has merged.
 - **Pass the prompt first.** `--allowedTools` and `--disallowedTools` take lists and swallow any argument after them, so the workflow passes the prompt as the first argument.
-- **The agent runs as you**, with access to everything your user can reach. The workflow forbids force-pushes, merges and `sudo`. For stronger isolation, use a dedicated machine or macOS user with its own Claude login and a GitHub token limited to its repositories.
+- **The agent runs as you**, with access to everything your user can reach, including your `gh` login. The workflow's deny list blocks force-pushes, pushes to `main`, merges, `gh api`, `curl`/`wget` and `sudo`. Treat it as a guard against mistakes, not a security boundary: prefix rules can be bypassed with `bash -c` or a script.
+- **Protect `main` on the server.** A ruleset that requires a pull request and blocks force-pushes, with no bypass list, is the only thing that stops a session (or a prompt injected through issue text) from pushing to `main` with your credentials. Rulesets on private repositories need GitHub Pro or higher. `infra/` manages them when `protect_default_branch` is on.
+- **Only collaborators' text reaches the session.** In a private repository only collaborators can open issues, and only a human adds `factory:local`. Keep it that way: don't run local sessions on issues from people you don't trust.
+- For stronger isolation, use a dedicated machine or macOS user with its own Claude login and a GitHub token limited to its repositories.
 - **The machine must be awake.** A queued job waits until the runner is back online.
 - **Cost:** self-hosted runner minutes are free on GitHub (the announced platform fee was postponed), and the session draws on your subscription's usage limits.
