@@ -32,6 +32,12 @@ Start a session by adding `factory:local` to an issue that has `ready-to-impleme
    ./svc.sh install && ./svc.sh start
    ```
    The service is a LaunchAgent, so it runs while you're logged in. Personal-account repositories each need their own runner registration.
+
+   Turn off `SessionCreate`. The runner's LaunchAgent is installed with `SessionCreate = true`, which runs it in a separate security session without your login keychain, where the Claude CLI keeps its login (and `gh` its token):
+   ```bash
+   ./svc.sh stop && plutil -replace SessionCreate -bool false ~/Library/LaunchAgents/actions.runner.spdolan-<repo>.*.plist && ./svc.sh start
+   ```
+   Reinstalling the service (`./svc.sh install`) turns it back on.
 2. **Clone the repository for sessions** over HTTPS, using `gh` for credentials. A LaunchAgent can't always reach your ssh-agent, and the job's token expires when the job ends.
    ```bash
    mkdir -p ~/factory-work && cd ~/factory-work && git -c credential.helper='!gh auth git-credential' clone https://github.com/spdolan/<repo>.git
@@ -45,8 +51,10 @@ Start a session by adding `factory:local` to an issue that has `ready-to-impleme
 ## Things to know
 
 - **Worktrees stay** under `<clone>/.claude/worktrees/gh-<n>` after a session ends, so you can inspect them. Remove one with `git worktree remove --force --force <path>` once its PR has merged.
+- **The session must outlive the job.** The runner kills processes tagged with the job's `RUNNER_TRACKING_ID` when the job ends, including Claude's background service. The workflow clears that variable before `claude --bg`.
 - **Pass the prompt first.** `--allowedTools` and `--disallowedTools` take lists and swallow any argument after them, so the workflow passes the prompt as the first argument.
-- **The agent runs as you**, with access to everything your user can reach, including your `gh` login. The workflow's deny list blocks force-pushes, pushes to `main`, merges, `gh api`, `curl`/`wget` and `sudo`. Treat it as a guard against mistakes, not a security boundary: prefix rules can be bypassed with `bash -c` or a script.
+- **GitHub credentials:** the job passes `FACTORY_GITHUB_TOKEN` (limited to the factory's repositories, no Workflows permission) to the clone and to the session as `GH_TOKEN`, so git and `gh` use it, not your all-repository keyring login. Sessions inherit the environment of the command that starts them.
+- **The agent runs as you**, with access to everything your user can reach, including your keyring `gh` login if it goes looking. The workflow's deny list blocks force-pushes, pushes to `main`, merges, `gh api`, `curl`/`wget` and `sudo`. Treat it as a guard against mistakes, not a security boundary: prefix rules can be bypassed with `bash -c` or a script.
 - **Protect `main` on the server.** A ruleset that requires a pull request and blocks force-pushes, with no bypass list, is the only thing that stops a session (or a prompt injected through issue text) from pushing to `main` with your credentials. Rulesets on private repositories need GitHub Pro or higher. `infra/` manages them when `protect_default_branch` is on.
 - **Only collaborators' text reaches the session.** In a private repository only collaborators can open issues, and only a human adds `factory:local`. Keep it that way: don't run local sessions on issues from people you don't trust.
 - For stronger isolation, use a dedicated machine or macOS user with its own Claude login and a GitHub token limited to its repositories.

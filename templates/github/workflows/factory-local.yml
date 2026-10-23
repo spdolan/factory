@@ -53,6 +53,7 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE: ${{ inputs.issue_number || github.event.issue.number }}
           WORK_DIR: ${{ vars.FACTORY_WORK_DIR }}
+          FACTORY_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
           IMPLEMENT_MODEL: ${{ vars.FACTORY_MODEL_IMPLEMENT || 'claude-sonnet-5-5' }}
           AGENT_MODEL: ${{ vars.FACTORY_MODEL_IMPLEMENT_AGENT || 'claude-haiku-5-5' }}
           SPEC_MODEL: ${{ vars.FACTORY_MODEL_SPEC || 'claude-sonnet-5-5' }}
@@ -74,9 +75,14 @@ jobs:
             echo "::error::No clone at $dir. See the setup notes at the top of this workflow." >&2
             exit 1
           fi
-          # The clone authenticates with the owner's gh login. Unset the job's token, which
-          # can't read code (issues: write only) and would win over the keyring otherwise.
-          env -u GH_TOKEN -u GITHUB_TOKEN git -C "$dir" fetch -q origin
+          # The clone's credential helper is gh, which prefers GH_TOKEN. Use the repo-scoped
+          # FACTORY_GITHUB_TOKEN when it is set; otherwise fall back to the owner's keyring login.
+          # Never the job's token, which can't read code (issues: write only).
+          if [ -n "${FACTORY_TOKEN:-}" ]; then
+            GH_TOKEN="$FACTORY_TOKEN" git -C "$dir" fetch -q origin
+          else
+            env -u GH_TOKEN -u GITHUB_TOKEN git -C "$dir" fetch -q origin
+          fi
           git -C "$dir" checkout -q main
           git -C "$dir" merge -q --ff-only origin/main
 
@@ -96,13 +102,21 @@ jobs:
           MODEL: ${{ steps.resolve.outputs.model }}
           EFFORT: ${{ steps.resolve.outputs.effort }}
           DIR: ${{ steps.resolve.outputs.dir }}
+          FACTORY_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           cd "$DIR"
-          # The session must use its owner's gh login (the job token expires with the job),
-          # and must not inherit an API key that would bill the API instead of the subscription.
+          # The session inherits this environment. Give it the repo-scoped FACTORY_GITHUB_TOKEN
+          # (no Workflows permission) for gh and git, never the job's token (it expires with the
+          # job), and no API key, which would bill the API instead of the subscription.
           unset GH_TOKEN GITHUB_TOKEN ANTHROPIC_API_KEY
+          if [ -n "${FACTORY_TOKEN:-}" ]; then export GH_TOKEN="$FACTORY_TOKEN"; fi
+          unset FACTORY_TOKEN
+          # The runner kills every process tagged with this job's RUNNER_TRACKING_ID when the job
+          # ends ("Terminate orphan process"), which would take down Claude's background service
+          # and the session with it. Clearing it lets the session outlive the job.
+          export RUNNER_TRACKING_ID=""
           prompt="$(printf '%s\n' \
             "Run the $STAGE stage for GitHub issue #$ISSUE in $REPO." \
             "" \
