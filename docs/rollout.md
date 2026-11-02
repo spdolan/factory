@@ -283,7 +283,7 @@ Requirement 1 makes the factory the most powerful repository you own, so it need
 4. Add the PR-title lint and adopt release-please. Cut `v1.0.0` from the current `main`.
 
 **Phase 1: groundwork on `@main`.**
-1. Add the reusable workflows, `prepare`, `defaults.yaml`, `labels.yaml`, `features.yaml`, `contract.lock`, the `config.yml` schema and the `factory` CLI.
+1. Add the reusable workflows, `prepare`, `defaults.yaml`, `labels.yaml`, `features.yaml`, `contract.lock`, the `config.yml` schema and the `factory` CLI. Build the workflows as the generic plan → agent → apply stage runner driven by `pipeline.yaml` ([pipeline.md](pipeline.md)), so they're rewritten once, not twice. `defaults.yaml` and `labels.yaml` fold into `pipeline.yaml` there.
 2. Run `factory install` in groundwork. That replaces its vendored copies with stubs at `@main`, adds `config.yml` with `preview: all`, and adds the hook.
 3. Answer the open questions below, using `try` runs and groundwork's real traffic.
 4. Exit when triage, review, implement, local and housekeeping have each run green from `@main`, an interactive session finds the skills, and a test flag has gone from preview to default with its `factory:notice` issue.

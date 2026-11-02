@@ -108,7 +108,7 @@ cd ~/code/<project>
 ~/code/factory/scripts/install-factory.sh
 ```
 
-A proposal to replace per-repository reinstalls with reusable workflows, versioned releases and opt-out feature flags is in [docs/rollout.md](docs/rollout.md).
+A proposal to replace per-repository reinstalls with reusable workflows, versioned releases and opt-out feature flags is in [docs/rollout.md](docs/rollout.md), and a configuration-driven pipeline (stages, states, model tiers, runtimes) is in [docs/pipeline.md](docs/pipeline.md).
 
 The installer copies the skills into `.claude/skills/` and the workflows into `.github/workflows/`, and creates `FACTORY.md`, `vision.md` and `bets.md` if they're missing. It records checksums in `.claude/factory.lock`, so a reinstall upgrades unchanged files and keeps files you or the improve-review loop changed (`--force` overwrites them). Other options:
 
