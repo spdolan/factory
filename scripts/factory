@@ -6,14 +6,16 @@
 #         - the consumer declaration (the `factory` repository topic)
 #         - the factory's labels (templates/labels.txt)
 #         - Actions settings: read-only default token; Actions may create and approve PRs
-#         - the Claude and FACTORY_GITHUB_TOKEN secrets (reported only: use rotate-secrets)
+#         - the Claude and FACTORY_GITHUB_TOKEN secrets, and FACTORY_READ_TOKEN when the
+#           factory is private (reported only: use rotate-secrets)
 #         - that the factory files are installed (reported only: use install-factory.sh)
 #       --protect-default-branch also checks for (and with --fix creates) a ruleset that
 #       requires a pull request and blocks force pushes and deletion on the default branch.
 #       Rulesets on private repositories need GitHub Pro or higher.
 #
 #   factory rotate-secrets [--owner OWNER] [--dry-run]
-#       Sets each of FACTORY_GITHUB_TOKEN, CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY that is
+#       Sets each of FACTORY_GITHUB_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY and
+#       FACTORY_READ_TOKEN (needed only while the factory is private) that is
 #       exported in your shell on every repository OWNER owns that declares itself a consumer
 #       (has the `factory` topic). OWNER defaults to your gh login. Values are piped to gh,
 #       never put on a command line, and nothing is written to disk.
@@ -22,7 +24,8 @@
 #       Run inside the factory. Creates or updates its rulesets: main changes only through
 #       a pull request (no force pushes or deletion), and only GitHub Actions (the release
 #       workflow) may create, move or delete v* tags. No admin bypass: local agent sessions
-#       run with your login.
+#       run with your login. While the factory is private it also sets Actions access so
+#       your other repositories may call its reusable workflows.
 #
 # Consumers are found by what they declare about themselves, so the factory never lists
 # them. The declaration is a repository topic, FACTORY_TOPIC (default `factory`).
@@ -31,15 +34,19 @@ set -euo pipefail
 
 FACTORY_DIR="${FACTORY_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 TOPIC="${FACTORY_TOPIC:-factory}"
-SECRETS=(FACTORY_GITHUB_TOKEN CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY)
+SECRETS=(FACTORY_GITHUB_TOKEN CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FACTORY_READ_TOKEN)
 BRANCH_RULESET="factory: protect default branch"
 TAG_RULESET="factory: protect release tags"
 GITHUB_ACTIONS_APP_ID=15368
 
-usage() { sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 die() { echo "factory: $*" >&2; exit 1; }
 need_gh() { command -v gh >/dev/null || die "needs the GitHub CLI (gh)"; gh auth status >/dev/null 2>&1 || die "run 'gh auth login' first"; }
 this_repo() { gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || die "run this inside a GitHub repository clone"; }
+# factory_repo: OWNER/NAME of this factory checkout, from its origin remote.
+factory_repo() { git -C "$FACTORY_DIR" remote get-url origin 2>/dev/null | sed -E 's#(\.git)?$##; s#.*[:/]([^/]+/[^/]+)$#\1#' || true; }
+# visibility REPO: PUBLIC, PRIVATE or INTERNAL; empty if it can't be read.
+visibility() { gh repo view "$1" --json visibility -q .visibility 2>/dev/null || true; }
 
 # ruleset_body KIND: the JSON for a ruleset (KIND = branch | tags).
 ruleset_body() {
@@ -155,6 +162,16 @@ cmd_doctor() {
   else
     bad "secret FACTORY_GITHUB_TOKEN (agent PRs won't trigger CI or review without it): export it and run 'factory rotate-secrets'"
   fi
+  local factory vis=""
+  factory="$(factory_repo)"
+  [ -z "$factory" ] || vis="$(visibility "$factory")"
+  if [ "$vis" = PUBLIC ]; then
+    ok "factory is public: no read token needed"
+  elif grep -qx FACTORY_READ_TOKEN <<<"$secrets"; then
+    ok "secret FACTORY_READ_TOKEN (factory is ${vis:-not readable here})"
+  else
+    bad "secret FACTORY_READ_TOKEN (the factory is ${vis:-not readable here}, so runs need it to fetch the factory): export it and run 'factory rotate-secrets'"
+  fi
 
   # Default-branch ruleset, when asked for.
   if [ "$protect" = true ]; then
@@ -197,7 +214,7 @@ cmd_rotate_secrets() {
   local repos self
   repos="$(gh repo list "$owner" --topic "$TOPIC" --limit 1000 --json nameWithOwner -q '.[].nameWithOwner' | sort)"
   [ -n "$repos" ] || die "no repositories of $owner have the '$TOPIC' topic; run 'factory doctor --fix' in each consumer"
-  self="$(git -C "$FACTORY_DIR" remote get-url origin 2>/dev/null | sed -E 's#(\.git)?$##; s#.*[:/]([^/]+/[^/]+)$#\1#' || true)"
+  self="$(factory_repo)"
 
   local r count=0
   while IFS= read -r r; do
@@ -232,6 +249,14 @@ cmd_protect() {
   [ -n "$repo" ] || repo="$(this_repo)"
   put_ruleset "$repo" branch "$BRANCH_RULESET"
   put_ruleset "$repo" tags "$TAG_RULESET"
+  if [ "$(visibility "$repo")" != PUBLIC ]; then
+    # Private: let the owner's other repositories call its reusable workflows.
+    if gh api -X PUT "repos/$repo/actions/permissions/access" -f access_level=user >/dev/null 2>&1; then
+      echo "set Actions access on $repo: repositories owned by the same user may use its workflows"
+    else
+      echo "could not set Actions access on $repo (Settings > Actions > General > Access); a private factory needs it" >&2
+    fi
+  fi
 }
 
 case "${1:-}" in

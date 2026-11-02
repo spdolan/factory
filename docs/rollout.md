@@ -1,6 +1,6 @@
 # Rolling out factory changes
 
-Status: proposal, third draft. Phase 0 is in progress. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md). The factory is going public, versions stay below 1.0 so this architecture ships as a minor release, and repositories learn about updates through issues the factory opens during runs that happen anyway, not from a scheduled job. The companion [pipeline.md](pipeline.md) makes the stages themselves configuration.
+Status: proposal, third draft. Phase 0 is in progress. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md). The factory can stay private or go public (§11), versions stay below 1.0 so this architecture ships as a minor release, and repositories learn about updates through issues the factory opens during runs that happen anyway, not from a scheduled job. The companion [pipeline.md](pipeline.md) makes the stages themselves configuration.
 
 ## The problem
 
@@ -34,7 +34,7 @@ A factory change reaches a repository only when someone reruns `install-factory.
 
 ```mermaid
 flowchart LR
-  subgraph factory["factory (public, names no consumer)"]
+  subgraph factory["factory (names no consumer)"]
     PR["PR, conventional title"] --> Main["main"]
     Main -->|"release-please PR merged"| Rel["v0.2.3<br/>moves v0.2"]
     RW["reusable workflows<br/>skills, scripts<br/>pipeline.yaml, features.yaml"]
@@ -119,13 +119,13 @@ Merging the release-please PR is the promotion. Until then, merged work runs onl
 - **One commit for the whole run.** The first job finds the commit of the workflow it was called at, `job_workflow_sha`, from the OIDC token or a workflow context (unverified). Every later job checks out the factory at that commit, and the stub doesn't repeat the ref.
 - **The setup action matches the workflow.** Each job starts with `uses: ./.factory/.github/actions/prepare`, a local path in that checkout, so the action is always the same version as the workflow.
 - **What ran is visible.** `prepare` writes the job summary: the commit and release, the resolved config and where each value came from, the flags that are on, and any pending update.
-- **No token is needed to fetch the factory**, because it is public. Checkout and tarball downloads are anonymous.
+- **Fetching the factory.** If the factory is public, checkout and tarball downloads are anonymous. If it is private, each consuming repository holds `FACTORY_READ_TOKEN`, read-only on the factory alone, used only by the checkout step and never given to the agent (§11).
 
 ### 4. Skills and scripts come from the pinned commit
 
 - **CI.** `prepare` copies `.factory/skills/<name>` into `.claude/skills/<name>`, so existing paths keep working. The consuming repository gitignores the factory-managed skill directories and `.factory/`.
 - **Overrides.** A factory skill the repository has committed (`git ls-files .claude/skills/<name>`) is the repository's own fork. `prepare` leaves it alone and says so. Repository-owned skills, such as `review-pr-local`, aren't touched.
-- **Interactive sessions and `factory-local`.** A SessionStart hook in the repository's `.claude/settings.json`, added by `factory install`, reads the ref from a stub and copies that version's skills in. It downloads them anonymously from the public factory, and skips the download if the skills are already current.
+- **Interactive sessions and `factory-local`.** A SessionStart hook in the repository's `.claude/settings.json`, added by `factory install`, reads the ref from a stub and copies that version's skills in. It downloads them anonymously from a public factory, or with your `gh` login from a private one (a claude.ai cloud session then needs the factory attached), and skips the download if the skills are already current.
 - **The improve-review loop writes only `review-pr-local`**, starting in phase 0.
 
 ### 5. Each repository's settings live in that repository
@@ -188,7 +188,7 @@ spec-auto-advance:
 
 Repositories don't run a weekly job. The update check is part of the plan step, which runs at the start of every factory run in that repository, whether triage, review or anything else. The check:
 
-1. Reads the factory's latest releases. That is one anonymous call to the public factory's tags.
+1. Reads the factory's latest releases. That is one call to the factory's tags: anonymous when it is public, with `FACTORY_READ_TOKEN` when it is private.
 2. Compares them with what this run resolved (§3) and with `config.yml`. Two things are worth an issue:
    - **A newer minor line** (`v0.3` exists and the stub calls `@v0.2`). That is a breaking release to adopt.
    - **Flags that will turn on in the next release, or are new in preview**, and that the repository hasn't decided on (they're in neither `features.on` nor `features.off`).
@@ -255,10 +255,11 @@ Under `dry_run`, every stage skips its apply job. Implement and spec upload thei
 
 ### 9. Protecting the factory
 
-The factory is public and is the most powerful repository you own, so:
+The factory is the most powerful repository you own, so:
 
 - **Rulesets**, set with `scripts/factory protect`, run inside the factory:
   - On `main`: changes only through a PR, no force pushes, no deletion.
+  - Rulesets are free on a public repository; a private one needs GitHub Pro or higher (§11).
   - On `refs/tags/v*`: only GitHub Actions (the release workflow) may create, move or delete tags. There is no bypass for admins, because local sessions run with your login, which is an admin. Roll back through the workflow's `rollback` input.
 - **No agent token covers the factory.**
 - **Pull requests from forks** run only the factory's own CI, which uses no secrets and never `pull_request_target`.
@@ -276,13 +277,29 @@ The factory is public and is the most powerful repository you own, so:
 | `factory protect` | run inside the factory: rulesets on `main` and `v*` tags. Exists today |
 | `factory materialize` | what the SessionStart hook runs |
 
+### 11. Public or private
+
+The design works either way. The factory names no other repository, so going public exposes no repository names in the current code; its history is another matter (decision 1 in the pilot notes).
+
+| | Public | Private |
+|---|---|---|
+| Fetching the factory in CI | anonymous | `FACTORY_READ_TOKEN` in each repository, set and renewed by `factory rotate-secrets`; when it expires, every repository's runs stop until it is renewed |
+| Calling its reusable workflows | works | needs Settings → Actions → General → Access set to the owner's repositories (`factory protect` sets it); whether a personal account offers this was open question 5 |
+| Rulesets on `main` and `v*` tags | free | need GitHub Pro or higher; without them only the local deny list stops a tag being moved |
+| Interactive sessions fetching skills | anonymous | your `gh` login; claude.ai cloud sessions need the factory attached |
+| Dependabot bumps of pinned versions | works | unverified |
+| Who sees prompts and workflows, who can open PRs | anyone; forks run only the factory's CI | only you |
+
+Two checks settle it: whether private reusable-workflow sharing works on a personal account (open question 5), and whether the account has GitHub Pro (open question 6). If both hold, private costs one more token. If either fails, public is simpler.
+
 ## Credentials
 
 | Secret | Where | Scope |
 |---|---|---|
 | `FACTORY_GITHUB_TOKEN` | each repository | unchanged; never includes the factory. Gains Workflows: write only once agents no longer hold it (§6.3) |
 | `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` | each repository | unchanged |
-| `FACTORY_PRIVATE_NAMES` (optional) | the factory | names `check-references.sh` must never find, kept out of the public code |
+| `FACTORY_READ_TOKEN` | each repository, **only while the factory is private** | fine-grained, the factory only, Contents: read. Set and renewed by `factory rotate-secrets` |
+| `FACTORY_PRIVATE_NAMES` (optional) | the factory | names `check-references.sh` must never find, kept out of the code (it matters most if the factory goes public) |
 
 ## Migration
 
@@ -291,7 +308,7 @@ The factory is public and is the most powerful repository you own, so:
 2. Point improve-review-pr at `review-pr-local` only.
 3. Block tag pushes in `factory-local`. `factory protect` sets the factory's rulesets.
 4. Add the PR-title lint and release-please (pre-1.0 settings, moving `v0.N` tags).
-5. Merge, make the repository public, run `factory protect`, tag each consumer (`factory doctor --fix`), run `factory rotate-secrets`, delete the old Terragrunt state, and cut v0.1.0.
+5. Merge, choose public or private (§11), run `factory protect`, tag each consumer (`factory doctor --fix`), run `factory rotate-secrets`, delete the old Terragrunt state, and cut v0.1.0.
 
 **Phase 1: the test repository on `@main`; ships as v0.2.0.**
 1. Build the reusable workflows as the generic stage runner from [pipeline.md](pipeline.md), along with:
@@ -320,3 +337,5 @@ None of these could be checked against GitHub's documentation while this was wri
 2. **Finding the called workflow's commit.** Is `job_workflow_sha` available as a context, or only in the OIDC token? If neither works, the stub passes the ref as an input, and the first job resolves it once.
 3. **Check names.** Called jobs appear as `<stub job> / <called job name>`. Any required check has to be renamed once.
 4. **Tag-ruleset bypass on a personal account.** Does the bypass for the GitHub Actions app work on a repository owned by a personal account? If not, the release workflow moves tags with a token that has Contents: write on the factory only, kept in the factory's secrets.
+5. **Private reusable workflows on a personal account.** Can the owner's other private repositories call a private factory's reusable workflows once its Access setting allows them? Being tested from groundwork. If not, the factory goes public.
+6. **GitHub Pro.** Rulesets on a private factory need it. If the account doesn't have it, either go public or accept the local deny list as the only guard on tags.

@@ -8,7 +8,7 @@ Each repository keeps a thin stub and its own settings. Everything else runs fro
 
 ```mermaid
 flowchart LR
-  subgraph F["factory (public, names no repository)"]
+  subgraph F["factory (names no repository)"]
     direction TB
     REL["Releases<br/>v0.2.3, line tag v0.2<br/>test repository: main"]
     STAGE["stage.yml<br/>plan → agent → apply"]

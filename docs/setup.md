@@ -28,6 +28,16 @@ One fine-grained personal access token covers every repository the factory runs 
 
 Actions run with this token are attributed to you. Unlike `GITHUB_TOKEN`, it triggers CI and review on agent PRs.
 
+### FACTORY_READ_TOKEN (only while the factory is private)
+
+Runs fetch the factory's skills, scripts and configuration. A public factory needs no token for that. A private one needs a second fine-grained token:
+
+1. **Name:** `factory-read`. **Expiration:** the longest allowed, with a calendar reminder.
+2. **Repository access:** only the factory.
+3. **Repository permissions:** Contents: Read (Metadata: Read is added automatically). Nothing else.
+
+`factory rotate-secrets` puts it on every consuming repository. Only the checkout step uses it; agents never see it. Also run `scripts/factory protect` in the factory, which sets **Settings → Actions → General → Access** so your other repositories may call its reusable workflows.
+
 ### Claude credentials
 
 Use one of these:
