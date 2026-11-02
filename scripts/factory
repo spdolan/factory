@@ -20,11 +20,11 @@
 #       (has the `factory` topic). OWNER defaults to your gh login. Values are piped to gh,
 #       never put on a command line, and nothing is written to disk.
 #
-#   factory protect [--repo OWNER/NAME] [--release-app SLUG]
+#   factory protect [--repo OWNER/NAME] [--release-app APP_ID]
 #       Run inside the factory. Creates or updates its rulesets: main changes only through
 #       a pull request (no force pushes or deletion), and only the release workflow's
-#       GitHub App (--release-app, or FACTORY_RELEASE_APP; the app's slug from its URL) may
-#       create, move or delete v* tags. Without an app the tag ruleset has no bypass at all
+#       GitHub App (--release-app, or FACTORY_RELEASE_APP: its App ID from the app's
+#       settings page, or the slug of a public app) may create, move or delete v* tags. Without an app the tag ruleset has no bypass at all
 #       and releases fail until one is added. No admin bypass: local agent sessions run
 #       with your login, and GitHub refuses the Actions app as a bypass actor on a personal
 #       account. While the factory is private it also sets Actions access so your other
@@ -52,8 +52,14 @@ factory_repo() { git -C "$FACTORY_DIR" remote get-url origin 2>/dev/null | sed -
 # visibility REPO: PUBLIC, PRIVATE or INTERNAL; empty if it can't be read.
 visibility() { gh repo view "$1" --json visibility -q .visibility 2>/dev/null || true; }
 
-# app_id SLUG: the numeric id of a GitHub App, from its public listing.
-app_id() { gh api "apps/$1" --jq .id 2>/dev/null || die "no GitHub App '$1' (the slug is the last part of its settings URL)"; }
+# app_id APP: the numeric id of a GitHub App. APP is that id, or the slug of a public app
+# (a private app can't be looked up by slug with your login; its App ID is on its settings page).
+app_id() {
+  case "$1" in
+    *[!0-9]*) gh api "apps/$1" --jq .id 2>/dev/null || die "can't look up GitHub App '$1' by slug (private apps can't be); pass its App ID from the app's settings page" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
 
 # ruleset_body KIND: the JSON for a ruleset (KIND = branch | tags). The tag ruleset's
 # bypass list holds the release app when RELEASE_APP is set, else nothing.
@@ -259,7 +265,7 @@ cmd_protect() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --repo) repo="${2:?--repo needs OWNER/NAME}"; shift ;;
-      --release-app) RELEASE_APP="${2:?--release-app needs the app slug}"; shift ;;
+      --release-app) RELEASE_APP="${2:?--release-app needs the App ID or slug}"; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "protect: unknown option $1" ;;
     esac

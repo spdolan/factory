@@ -107,7 +107,7 @@ The release workflow needs an actor that may create and move `v*` tags while eve
 
 1. GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App**. Name it `<something>-factory-release`; any homepage URL; untick **Webhook → Active**.
 2. **Repository permissions:** Contents: Read and write, Pull requests: Read and write (Metadata: Read is added). **Where can this GitHub App be installed:** Only on this account.
-3. Create it, then **Generate a private key** (a `.pem` download) and note the **Client ID** on the app's page. The slug is the last part of the app's settings URL.
+3. Create it, then **Generate a private key** (a `.pem` download) and note the **App ID** and **Client ID** on the app's page.
 4. **Install App** → your account → only the factory.
 5. Put the two values on the factory, from anywhere:
 
@@ -124,7 +124,7 @@ The release workflow needs an actor that may create and move `v*` tags while eve
 Then, from inside the factory:
 
 ```bash
-scripts/factory protect --release-app <slug>
+scripts/factory protect --release-app <App ID>
 ```
 
 It creates (or updates) two rulesets. On `main`, changes go only through a pull request, with no force pushes or deletion. On `v*` tags, only that app may create, move or delete them; the release workflow mints a short-lived token from it for release-please and the tag push. Without `--release-app` the tag ruleset has no bypass at all and releases fail. There is no admin bypass, because local agent sessions run with your login. Never add the factory to `FACTORY_GITHUB_TOKEN`'s repositories, and never give it the `factory` topic.
