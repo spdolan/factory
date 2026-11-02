@@ -1,0 +1,41 @@
+name: PR title
+
+# Squash merges use the PR title as the commit message, and release-please reads
+# those messages to choose the next version, so the title declares the change's
+# class (docs/rollout.md §6):
+#   fix:  brings behavior back to what is documented; no new writes, tools,
+#         permissions, triggers, labels, outputs or defaults
+#   feat: anything a repository could notice (new writes, tools, instructions,
+#         cost, changed defaults, stages); ships behind a flag
+#   feat!: changes what a repository provides or relies on (inputs, secrets,
+#         permission ceiling, triggers, job IDs, owned paths, labels, config schema)
+#   chore:, docs:, ci:, refactor:, test:, perf:, build:, style:, revert: no behavior change
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  title:
+    name: Conventional title
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          types='feat|fix|chore|docs|ci|refactor|test|perf|build|style|revert'
+          if [[ "$TITLE" =~ ^($types)(\([a-z0-9._/-]+\))?(!)?:\ [^[:space:]].*$ ]] || [[ "$TITLE" =~ ^Revert\ \".+\"$ ]]; then
+            echo "OK: $TITLE"
+            exit 0
+          fi
+          {
+            echo "::error::PR title must be a conventional commit: <type>(<optional scope>)<optional !>: <summary>"
+            echo "Types: ${types//|/, }. Examples: 'fix(triage): …', 'feat(review): …', 'feat(pipeline)!: …'."
+            echo "Got: $TITLE"
+          } >&2
+          exit 1

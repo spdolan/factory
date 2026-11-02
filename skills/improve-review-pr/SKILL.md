@@ -1,6 +1,6 @@
 ---
 name: improve-review-pr
-description: Periodic (weekly by default) outer loop that reviews human reactions to automated review-pr comments, synthesizes durable organizational knowledge, and opens a PR to update the review-pr skill when the feedback is worth remembering. Use when improving code-review quality from human feedback, running a scheduled review-skill retrospective, or incorporating maintainer corrections into review guidance.
+description: Periodic (weekly by default) outer loop that reviews human reactions to automated review-pr comments, synthesizes durable organizational knowledge, and opens a PR to update this repository's review-pr-local companion skill when the feedback is worth remembering. Use when improving code-review quality from human feedback, running a scheduled review-skill retrospective, or incorporating maintainer corrections into review guidance.
 ---
 
 # Improve Review PR
@@ -17,7 +17,8 @@ Do not re-review product code. Do not restate one-off PR opinions. Only capture 
 
 ## Inputs
 
-- The current checkout of the repository that owns `.claude/skills/review-pr/SKILL.md`
+- The current checkout of the repository whose reviews are being improved. Its `.claude/skills/review-pr-local/SKILL.md` may or may not exist yet.
+- The core `.claude/skills/review-pr/SKILL.md`, read-only. It belongs to the factory and is shared by every repository that uses it, so this loop never edits it.
 - GitHub API access via authenticated `gh`
 - Optional lookback window: the workflow's `since_hours` input (168 hours, one week, by default)
 - Optional `feedback_corpus.json` produced by:
@@ -84,11 +85,11 @@ Prefer a small number of high-confidence learnings over many weak ones.
 Choose exactly one outcome:
 
 - `no_changes` — no durable learning worth encoding
-- `update_review_pr` — update core `.claude/skills/review-pr/SKILL.md`
-- `update_review_pr_local` — update or create `.claude/skills/review-pr-local/SKILL.md` for repository-specific guidance
-- `both` — core and local updates are both warranted
+- `update_review_pr_local` — update or create `.claude/skills/review-pr-local/SKILL.md`
 
-Use `review-pr-local` for repository-specific conventions. Keep portable review behavior in core `review-pr`.
+All learnings go into `review-pr-local`, including ones that look portable. Never edit core `.claude/skills/review-pr/SKILL.md`: it belongs to the factory, and a local edit would either be overwritten or fork this repository from the factory's review skill.
+
+If a learning looks portable to any repository (not specific to this repository's code, conventions or domain), still encode it in `review-pr-local`, and also list it in the PR body under **Candidates for the factory's core review-pr**, so a human can port it to the factory.
 
 If no durable learning exists, stop after writing the synthesis report. Do not open an empty PR.
 
@@ -103,7 +104,7 @@ When updating a skill:
 5. Write guidance as durable rules or examples, not as a diary of recent PRs.
 6. If creating `review-pr-local`, make it a companion that specializes overridable review guidance only. Explicitly state that it must not change the core output schema or contracts.
 
-Validate that the resulting skill still clearly instructs the agent to:
+Validate that `review-pr-local` together with core `review-pr` still clearly instructs the agent to:
 
 - write only `review.json`
 - avoid posting to GitHub directly
@@ -115,7 +116,7 @@ Validate that the resulting skill still clearly instructs the agent to:
 If you updated any skill file:
 
 1. Create a branch such as `improve/review-pr-YYYY-MM-DD`
-2. Commit only the skill updates and any tiny supporting docs needed to explain them
+2. Commit only `.claude/skills/review-pr-local/` and any tiny supporting docs needed to explain it
 3. Use a Conventional Commits message such as `docs(review-pr): encode review learnings` and end it with `Co-Authored-By: Claude <Model> <Version> <noreply@anthropic.com>`, naming the model you are running as, for example `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>` (the workflow prompt gives the model ID; `claude-haiku-5-5` is Haiku 5.5)
 4. Push and open a PR against the repository default branch
 5. In the PR body, include:
@@ -124,6 +125,7 @@ If you updated any skill file:
    - Why each learning is durable
    - Links to representative source PRs/comments
    - Explicit non-goals / rejected candidates
+   - **Candidates for the factory's core review-pr**: learnings that look portable, or "none"
    - Note that this PR only updates review guidance, not product code
 
 Do not merge the PR. Leave it for human review.
@@ -137,7 +139,7 @@ Return a concise report with:
 - **Window:** last N hours
 - **PRs inspected:** count
 - **Feedback items:** count validated / corrected / refined / ambiguous
-- **Decision:** no_changes | update_review_pr | update_review_pr_local | both
+- **Decision:** no_changes | update_review_pr_local
 - **Learnings encoded:** bullet list, or "none"
 - **Skill PR:** URL or "not opened"
 - **Next step:** one concrete action for humans
@@ -147,10 +149,10 @@ If a skill PR was opened, the report must include its URL.
 
 ## Guardrails
 
-- Do not update product code, tests, or unrelated skills.
+- Do not update product code, tests, core `review-pr`, or any skill other than `review-pr-local`.
 - Do not change the review-pr JSON schema, severity labels, safety rules, evidence rules, suggestion-block constraints, or annotated-diff line contract.
 - Do not open a PR for weak, one-off, or already-encoded feedback.
 - Do not invent human feedback that is not present in the corpus.
 - Do not expose secrets, tokens, private environment variables, or internal reasoning dumps.
-- Prefer local companion guidance for repo-specific conventions; keep core `review-pr` portable.
+- Encode every learning in `review-pr-local`; list portable ones as candidates for the factory instead of editing core `review-pr`.
 - Keep the skill update small enough for a human to review quickly.

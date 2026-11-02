@@ -13,7 +13,7 @@ name: "Factory: notify consumers"
 #     uses: ./.github/workflows/factory-notify-consumers.yml
 #     with:
 #       tag: ${{ needs.release-please.outputs.ts_tag }}
-#       package: "@spdolan/plinth"
+#       package: "@owner/library"
 #     secrets: inherit
 #
 # Needs FACTORY_GITHUB_TOKEN with contents write on every consumer repository
@@ -28,7 +28,7 @@ on:
         required: true
         type: string
       package:
-        description: Package name consumers depend on, e.g. @spdolan/plinth
+        description: Package name consumers depend on, e.g. @owner/library
         required: true
         type: string
   workflow_dispatch:
@@ -38,7 +38,7 @@ on:
         required: true
         type: string
       package:
-        description: Package name consumers depend on, e.g. @spdolan/plinth
+        description: Package name consumers depend on, e.g. @owner/library
         required: true
         type: string
 

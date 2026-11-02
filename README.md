@@ -2,7 +2,19 @@
 
 A cloud software factory for small, pre-revenue projects. It is a set of Claude Code skills and GitHub Actions workflows that move work from a product bet to a reviewed pull request. Agents advance small, low-risk work on their own, and a human approves anything critical or complex.
 
+## Where it stands
+
+Today (0.1) the factory is copied into each repository: `scripts/install-factory.sh` puts the skills in `.claude/skills/` and the workflows in `.github/workflows/`, and `scripts/factory` sets each repository up (`doctor`, `rotate-secrets`) and protects the factory itself (`protect`). Every factory change still needs a reinstall and a PR in each repository.
+
+The next line (0.2) replaces the copies with reusable workflows that each repository calls at a release tag, new behavior behind opt-out flags, and update issues opened during normal runs. That design is in [docs/rollout.md](docs/rollout.md) (distribution, versions, flags, update issues), [docs/pipeline.md](docs/pipeline.md) (one configuration-driven stage runner) and [docs/architecture.md](docs/architecture.md) (diagrams). None of it is built yet.
+
 It is a port of [warpdotdev-demos/cloud-factory-demo](https://github.com/warpdotdev-demos/cloud-factory-demo) from Warp's Oz runtime to [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action). It adds a product layer (`bet`), a prior-art gate (`novelty-gate`), risk-based autonomy, model tiers chosen for cost, and automatic dependency bumps between repositories.
+
+## The problem it solves
+
+One person with a handful of small repositories has more fixable issues than hours. Most of them are small and low-risk: a typo, a failing check, a bump, a contained feature. A few touch things that must not break: invariants, schemas, auth, data. Running an agent on everything is reckless; approving every step by hand costs the time it was meant to save.
+
+The factory draws that line per issue. Triage decides what an issue is (state), how big it is (size) and what it touches (risk), from the repository's own `FACTORY.md`. Small, low-risk work goes through spec, implementation and review without you; everything else waits for one label from you. Every stage runs as a GitHub Actions job on the repository's own secrets, writes only through pull requests, and ends in a review a human merges. The diagram below is that path.
 
 ## Flow
 
@@ -50,7 +62,7 @@ Some steps are always human: approving a spec (by adding `ready-to-implement`), 
 
 | Stage | Default model | When it's bigger |
 |---|---|---|
-| Triage | Haiku 5.5 | High effort for invariant-heavy or sensitive repositories (plinth, judicial_outcomes). On four plinth test cases it made the same safety calls as Sonnet 5.5, at about a tenth of the cost |
+| Triage | Haiku 5.5 | High effort for invariant-heavy or sensitive repositories. On four test cases from an invariant-heavy library it made the same safety calls as Sonnet 5.5, at about a tenth of the cost |
 | Implement | Haiku 5.5 for `factory:agent` issues | Sonnet 5.5 when a human approved it; Opus 5.5 (high effort) for `invariant-risk` |
 | Review | Haiku 5.5 for PRs of ≤400 changed lines | Sonnet 5.5 for larger PRs or `invariant-risk` |
 | Spec | Sonnet 5.5 | Opus 5.5 (high effort) for `invariant-risk` |
@@ -87,7 +99,7 @@ Commits name the model that made them, for example `Co-Authored-By: Claude Haiku
 
 ## Workflows
 
-All of them run `anthropics/claude-code-action@v1.0.245`.
+They live in `templates/github/workflows/` and are copied into each repository. All of them run `anthropics/claude-code-action@v1.0.245`.
 
 | Workflow | Trigger |
 |---|---|
@@ -101,24 +113,65 @@ All of them run `anthropics/claude-code-action@v1.0.245`.
 | `factory-dependency-bump.yml` | `repository_dispatch` from a library release; dispatch |
 | `factory-local.yml` | `factory:local` on a `ready-to-implement` or `ready-to-spec` issue; dispatch. Starts a background Claude Code session on a self-hosted machine ([docs/local-runner.md](docs/local-runner.md)) |
 
-## Install into a repository
+## Versions
 
-```bash
-cd ~/code/<project>
-~/code/factory/scripts/install-factory.sh
-```
+Releases come from [release-please](https://github.com/googleapis/release-please) and conventional PR titles, which a CI check enforces. Before 1.0, the minor number is the breaking-change number: `fix:` and `feat:` cut a patch release (new behavior ships behind a flag), and `feat!:` cuts the next minor line. Each release moves its line tag (`v0.1`, `v0.2`, …), which repositories will call once the reusable workflows land ([docs/rollout.md](docs/rollout.md) §2). Nothing is released yet: merging the first release PR cuts 0.1.0, the installer-based factory. Merge the open release PR to release. To roll back, dispatch the Release workflow with `rollback: v0.2.3`.
 
-The installer copies the skills into `.claude/skills/` and the workflows into `.github/workflows/`, and creates `FACTORY.md`, `vision.md` and `bets.md` if they're missing. It records checksums in `.claude/factory.lock`, so a reinstall upgrades unchanged files and keeps files you or the improve-review loop changed (`--force` overwrites them). Other options:
+## Set up a repository
 
-- `--with-novelty ~/code/novelty-audit/skills` vendors the full novelty-audit skills so the gate can use them in CI
-- `--create-labels` creates the labels with `gh`, if you're not using Terragrunt
-- `--dry-run` shows what would change
+The short path. [docs/setup.md](docs/setup.md) has the details and the manual equivalents.
 
-Then:
+1. **Install the files**, from the root of the repository:
 
-1. Fill in `FACTORY.md`: validation commands, protected paths, human-only areas, consumers, and how to start the app.
-2. Set up credentials and settings by following [docs/setup.md](docs/setup.md). The fine-grained `FACTORY_GITHUB_TOKEN` is created by hand, and Terragrunt (`infra/`) applies the secrets, variables and labels to every repository.
-3. If agents need toolchains or registry credentials, add `.github/factory/setup.sh` (it receives `GITHUB_PACKAGES_TOKEN`).
+   ```bash
+   ~/code/factory/scripts/install-factory.sh
+   ```
+
+   The installer copies the skills into `.claude/skills/` and the workflows into `.github/workflows/`, and creates `FACTORY.md`, `vision.md` and `bets.md` if they're missing. It records checksums in `.claude/factory.lock`, so a reinstall upgrades unchanged files and keeps files you or the improve-review loop changed (`--force` overwrites them). `--with-skills DIR` also copies every skill under `DIR` (each subdirectory with a `SKILL.md`); `--dry-run` shows what would change.
+2. **Fill in `FACTORY.md`**: validation commands, protected paths, human-only areas, consumers, and how to start the app. Agents read it.
+3. **Create the tokens by hand**: a fine-grained `FACTORY_GITHUB_TOKEN` that covers the repositories the factory runs in (never the factory itself), and a Claude credential (`claude setup-token` or an API key). Steps in [docs/setup.md](docs/setup.md#1-create-the-tokens).
+4. **Declare the repository a consumer and fix its settings**, from inside it:
+
+   ```bash
+   ~/code/factory/scripts/factory doctor --fix
+   ```
+
+   It adds the `factory` topic, creates missing labels, and sets Actions to a read-only default token that may create pull requests. Without `--fix` it only reports.
+5. **Set the secrets** on every repository with the topic, from anywhere:
+
+   ```bash
+   export FACTORY_GITHUB_TOKEN='…' CLAUDE_CODE_OAUTH_TOKEN='…'
+   ~/code/factory/scripts/factory rotate-secrets
+   ```
+
+   It pipes each exported value to `gh`, writes nothing to disk, and lists the repositories it set. To rotate a token, export the new value and run it again.
+6. **Optional:** repository variables for autonomy and models (`FACTORY_AUTONOMY`, `FACTORY_MODEL_*`, `FACTORY_EFFORT_*`), and `.github/factory/setup.sh` if agents need toolchains or registry credentials (it receives `GITHUB_PACKAGES_TOKEN`).
+
+Commit the installed files and merge. To take a factory change, run the installer again and merge the result.
+
+The factory names no other repository. Each repository declares itself with the `factory` topic, and `scripts/factory` finds repositories by it; there is no registry and no infra state. Protect the factory itself once, from inside it, with `scripts/factory protect` (rulesets on `main` and `v*` tags).
+
+### Keeping the factory private
+
+This factory is public: consumers fetch it anonymously and rulesets are free. The same pattern works with a private factory on a plan that allows it:
+
+- **Rulesets on a private repository** need GitHub Pro (personal account) or Team (organization). On Free they return 403, and nothing on the server then stops a release tag from being moved.
+- **Calling its reusable workflows** (0.2) needs Settings → Actions → General → Access set to the owner's repositories (`scripts/factory protect` sets it). An organization gets the same setting for its repositories and can make the factory `internal` instead of private.
+- **Fetching it in runs** needs `FACTORY_READ_TOKEN` (fine-grained, the factory only, Contents: read) on each consumer, set by `scripts/factory rotate-secrets` and renewed before it expires; `doctor` reports it. An organization can set it once as an organization secret scoped to the consumers, or use a GitHub App installation token instead of a personal token.
+- **Interactive sessions** fetch skills with your `gh` login instead of anonymously.
+
+The trade-offs are in [docs/rollout.md](docs/rollout.md#11-public-or-private).
+
+## Layout
+
+| Path | What |
+|---|---|
+| `skills/` | the Claude Code skills, one directory each |
+| `templates/github/workflows/` | the workflows the installer copies into a repository |
+| `templates/repo/` | `FACTORY.md`, `vision.md`, `bets.md` starting points |
+| `templates/labels.txt` | the labels `doctor --fix` and the installer create |
+| `scripts/` | `install-factory.sh`, `factory` (doctor, rotate-secrets, protect), `check-references.sh` (CI: no references to other repositories) |
+| `docs/` | setup, the local runner, and the 0.2 design (rollout, pipeline, architecture) |
 
 ## Using it locally
 
@@ -137,7 +190,11 @@ The skills are ordinary Claude Code skills:
 - **Per-repository config.** `FACTORY.md` holds validation commands, protected paths, human-only areas, consumers, and how to start the app.
 - **Cross-repository releases.** A library release notifies its consumers. Non-breaking releases are bumped by Haiku, and breaking ones go to a human.
 - **Verification.** Screenshots through Playwright MCP or gstack instead of Oz computer-use video. It is opt-in, for repositories with a UI.
-- **Infrastructure as code.** Terragrunt manages each repository's secrets, variables, labels and Actions permissions.
+- **Self-declared consumers.** Each repository marks itself with the `factory` topic; `scripts/factory` finds repositories by it to set secrets, and checks and fixes each one's labels, Actions settings and rulesets. No infra state, and the factory lists no repositories.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) (conventional PR titles, the no-references rule, the local checks) and [SECURITY.md](SECURITY.md) for reporting problems privately.
 
 ## License
 

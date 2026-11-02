@@ -1,0 +1,268 @@
+#!/usr/bin/env bash
+# The factory's command-line tool. Every command works through your own `gh` login.
+#
+#   factory doctor [--fix] [--protect-default-branch]
+#       Run inside a consuming repository. Checks, and with --fix repairs:
+#         - the consumer declaration (the `factory` repository topic)
+#         - the factory's labels (templates/labels.txt)
+#         - Actions settings: read-only default token; Actions may create and approve PRs
+#         - the Claude and FACTORY_GITHUB_TOKEN secrets, and FACTORY_READ_TOKEN when the
+#           factory is private (reported only: use rotate-secrets)
+#         - that the factory files are installed (reported only: use install-factory.sh)
+#       --protect-default-branch also checks for (and with --fix creates) a ruleset that
+#       requires a pull request and blocks force pushes and deletion on the default branch.
+#       Rulesets on private repositories need GitHub Pro or higher.
+#
+#   factory rotate-secrets [--owner OWNER] [--dry-run]
+#       Sets each of FACTORY_GITHUB_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY and
+#       FACTORY_READ_TOKEN (needed only while the factory is private) that is
+#       exported in your shell on every repository OWNER owns that declares itself a consumer
+#       (has the `factory` topic). OWNER defaults to your gh login. Values are piped to gh,
+#       never put on a command line, and nothing is written to disk.
+#
+#   factory protect [--repo OWNER/NAME]
+#       Run inside the factory. Creates or updates its rulesets: main changes only through
+#       a pull request (no force pushes or deletion), and only GitHub Actions (the release
+#       workflow) may create, move or delete v* tags. No admin bypass: local agent sessions
+#       run with your login. While the factory is private it also sets Actions access so
+#       your other repositories may call its reusable workflows.
+#
+# Consumers are found by what they declare about themselves, so the factory never lists
+# them. The declaration is a repository topic, FACTORY_TOPIC (default `factory`).
+
+set -euo pipefail
+
+FACTORY_DIR="${FACTORY_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+TOPIC="${FACTORY_TOPIC:-factory}"
+SECRETS=(FACTORY_GITHUB_TOKEN CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FACTORY_READ_TOKEN)
+BRANCH_RULESET="factory: protect default branch"
+TAG_RULESET="factory: protect release tags"
+GITHUB_ACTIONS_APP_ID=15368
+
+usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+die() { echo "factory: $*" >&2; exit 1; }
+need_gh() { command -v gh >/dev/null || die "needs the GitHub CLI (gh)"; gh auth status >/dev/null 2>&1 || die "run 'gh auth login' first"; }
+this_repo() { gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || die "run this inside a GitHub repository clone"; }
+# factory_repo: OWNER/NAME of this factory checkout, from its origin remote.
+factory_repo() { git -C "$FACTORY_DIR" remote get-url origin 2>/dev/null | sed -E 's#(\.git)?$##; s#.*[:/]([^/]+/[^/]+)$#\1#' || true; }
+# visibility REPO: PUBLIC, PRIVATE or INTERNAL; empty if it can't be read.
+visibility() { gh repo view "$1" --json visibility -q .visibility 2>/dev/null || true; }
+
+# ruleset_body KIND: the JSON for a ruleset (KIND = branch | tags).
+ruleset_body() {
+  case "$1" in
+    branch) cat <<JSON
+{"name":"$BRANCH_RULESET","target":"branch","enforcement":"active",
+ "conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]}},
+ "rules":[{"type":"deletion"},{"type":"non_fast_forward"},
+  {"type":"pull_request","parameters":{"required_approving_review_count":0,"dismiss_stale_reviews_on_push":false,
+   "require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":false}}],
+ "bypass_actors":[]}
+JSON
+    ;;
+    tags) cat <<JSON
+{"name":"$TAG_RULESET","target":"tag","enforcement":"active",
+ "conditions":{"ref_name":{"include":["refs/tags/v*"],"exclude":[]}},
+ "rules":[{"type":"creation"},{"type":"update"},{"type":"deletion"},{"type":"non_fast_forward"}],
+ "bypass_actors":[{"actor_id":$GITHUB_ACTIONS_APP_ID,"actor_type":"Integration","bypass_mode":"always"}]}
+JSON
+    ;;
+  esac
+}
+
+# ruleset_id REPO NAME: the id of the ruleset with that name, or nothing.
+ruleset_id() { gh api "repos/$1/rulesets" --jq ".[] | select(.name == \"$2\") | .id" 2>/dev/null | head -1; }
+
+# put_ruleset REPO KIND NAME: create the ruleset, or update it in place.
+put_ruleset() {
+  local repo="$1" kind="$2" name="$3" id
+  id="$(ruleset_id "$repo" "$name")"
+  if [ -n "$id" ]; then
+    ruleset_body "$kind" | gh api -X PUT "repos/$repo/rulesets/$id" --input - >/dev/null
+    echo "updated ruleset '$name' on $repo"
+  else
+    ruleset_body "$kind" | gh api -X POST "repos/$repo/rulesets" --input - >/dev/null
+    echo "created ruleset '$name' on $repo"
+  fi
+}
+
+cmd_doctor() {
+  local fix=false protect=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --fix) fix=true ;;
+      --protect-default-branch) protect=true ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "doctor: unknown option $1" ;;
+    esac
+    shift
+  done
+  need_gh
+  local repo problems=0
+  repo="$(this_repo)"
+  echo "Checking $repo"
+
+  ok() { printf 'ok       %s\n' "$*"; }
+  bad() { printf 'MISSING  %s\n' "$*"; problems=$((problems + 1)); }
+  fixed() { printf 'fixed    %s\n' "$*"; }
+
+  # The consumer declaration.
+  if gh repo view "$repo" --json repositoryTopics -q '.repositoryTopics // [] | .[].name' | grep -qx "$TOPIC"; then
+    ok "declares itself a consumer (topic '$TOPIC')"
+  elif [ "$fix" = true ]; then
+    gh repo edit "$repo" --add-topic "$TOPIC" >/dev/null && fixed "added topic '$TOPIC'"
+  else
+    bad "topic '$TOPIC': without it, rotate-secrets skips this repository"
+  fi
+
+  # Factory files.
+  if [ -f .claude/factory.lock ] && [ -f FACTORY.md ]; then
+    ok "factory files installed ($(head -1 .claude/factory.lock | sed -E 's/.*factory@([^.]+).*/factory@\1/'))"
+  else
+    bad "factory files: run $FACTORY_DIR/scripts/install-factory.sh"
+  fi
+
+  # Labels.
+  local have name color desc missing=0
+  have="$(gh label list --repo "$repo" --limit 500 --json name -q '.[].name')"
+  while IFS='|' read -r name color desc; do
+    [ -n "$name" ] || continue
+    if grep -qxF -- "$name" <<<"$have"; then continue; fi
+    if [ "$fix" = true ]; then
+      gh label create "$name" --repo "$repo" --color "$color" --description "$desc" --force >/dev/null && fixed "label $name"
+    else
+      bad "label $name"; missing=$((missing + 1))
+    fi
+  done < "$FACTORY_DIR/templates/labels.txt"
+  [ "$missing" -gt 0 ] || ok "labels"
+
+  # Actions settings.
+  local perms
+  perms="$(gh api "repos/$repo/actions/permissions/workflow" --jq '"\(.default_workflow_permissions) \(.can_approve_pull_request_reviews)"')"
+  if [ "$perms" = "read true" ]; then
+    ok "Actions: read-only default token; Actions may create and approve pull requests"
+  elif [ "$fix" = true ]; then
+    gh api -X PUT "repos/$repo/actions/permissions/workflow" \
+      -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true >/dev/null
+    fixed "Actions: read-only default token; Actions may create and approve pull requests"
+  else
+    bad "Actions settings (now: default token '${perms% *}', create and approve PRs '${perms#* }')"
+  fi
+
+  # Secrets: names only; values can't be read back.
+  local secrets
+  secrets="$(gh secret list --repo "$repo" --json name -q '.[].name')"
+  if grep -qxE 'CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY' <<<"$secrets"; then
+    ok "Claude credential secret"
+  else
+    bad "secret CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY: export it and run 'factory rotate-secrets'"
+  fi
+  if grep -qx FACTORY_GITHUB_TOKEN <<<"$secrets"; then
+    ok "secret FACTORY_GITHUB_TOKEN"
+  else
+    bad "secret FACTORY_GITHUB_TOKEN (agent PRs won't trigger CI or review without it): export it and run 'factory rotate-secrets'"
+  fi
+  local factory vis=""
+  factory="$(factory_repo)"
+  [ -z "$factory" ] || vis="$(visibility "$factory")"
+  if [ "$vis" = PUBLIC ]; then
+    ok "factory is public: no read token needed"
+  elif grep -qx FACTORY_READ_TOKEN <<<"$secrets"; then
+    ok "secret FACTORY_READ_TOKEN (factory is ${vis:-not readable here})"
+  else
+    bad "secret FACTORY_READ_TOKEN (the factory is ${vis:-not readable here}, so runs need it to fetch the factory): export it and run 'factory rotate-secrets'"
+  fi
+
+  # Default-branch ruleset, when asked for.
+  if [ "$protect" = true ]; then
+    if [ -n "$(ruleset_id "$repo" "$BRANCH_RULESET")" ]; then
+      ok "ruleset '$BRANCH_RULESET'"
+    elif [ "$fix" = true ]; then
+      put_ruleset "$repo" branch "$BRANCH_RULESET"
+    else
+      bad "ruleset '$BRANCH_RULESET'"
+    fi
+  fi
+
+  if [ "$problems" -gt 0 ]; then
+    echo "$problems problem(s).$( [ "$fix" = true ] || echo ' Run with --fix to repair what can be repaired.')"
+    exit 1
+  fi
+  echo "All good."
+}
+
+cmd_rotate_secrets() {
+  local owner="" dry_run=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --owner) owner="${2:?--owner needs a value}"; shift ;;
+      --dry-run) dry_run=true ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "rotate-secrets: unknown option $1" ;;
+    esac
+    shift
+  done
+  need_gh
+  [ -n "$owner" ] || owner="$(gh api user -q .login)"
+
+  local names=() n
+  for n in "${SECRETS[@]}"; do
+    [ -n "${!n:-}" ] && names+=("$n")
+  done
+  [ "${#names[@]}" -gt 0 ] || die "export at least one of ${SECRETS[*]} first"
+
+  local repos self
+  repos="$(gh repo list "$owner" --topic "$TOPIC" --limit 1000 --json nameWithOwner -q '.[].nameWithOwner' | sort)"
+  [ -n "$repos" ] || die "no repositories of $owner have the '$TOPIC' topic; run 'factory doctor --fix' in each consumer"
+  self="$(factory_repo)"
+
+  local r count=0
+  while IFS= read -r r; do
+    if [ "$r" = "$self" ]; then
+      echo "skip     $r (the factory itself; agents' tokens must never cover it)"
+      continue
+    fi
+    for n in "${names[@]}"; do
+      if [ "$dry_run" = true ]; then
+        echo "would set $n on $r"
+      else
+        printf '%s' "${!n}" | gh secret set "$n" --repo "$r" >/dev/null
+        echo "set      $n on $r"
+      fi
+    done
+    count=$((count + 1))
+  done <<<"$repos"
+  echo "${count} repositor$( [ "$count" = 1 ] && echo y || echo ies)$( [ "$dry_run" = true ] && echo ' (dry run: nothing set)'). A consumer missing from this list lacks the '$TOPIC' topic."
+}
+
+cmd_protect() {
+  local repo=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo) repo="${2:?--repo needs OWNER/NAME}"; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "protect: unknown option $1" ;;
+    esac
+    shift
+  done
+  need_gh
+  [ -n "$repo" ] || repo="$(this_repo)"
+  put_ruleset "$repo" branch "$BRANCH_RULESET"
+  put_ruleset "$repo" tags "$TAG_RULESET"
+  if [ "$(visibility "$repo")" != PUBLIC ]; then
+    # Private: let the owner's other repositories call its reusable workflows.
+    if gh api -X PUT "repos/$repo/actions/permissions/access" -f access_level=user >/dev/null 2>&1; then
+      echo "set Actions access on $repo: repositories owned by the same user may use its workflows"
+    else
+      echo "could not set Actions access on $repo (Settings > Actions > General > Access); a private factory needs it" >&2
+    fi
+  fi
+}
+
+case "${1:-}" in
+  doctor) shift; cmd_doctor "$@" ;;
+  rotate-secrets) shift; cmd_rotate_secrets "$@" ;;
+  protect) shift; cmd_protect "$@" ;;
+  -h|--help|help|"") usage ;;
+  *) die "unknown command '$1' (doctor, rotate-secrets, protect)" ;;
+esac
