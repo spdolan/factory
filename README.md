@@ -10,6 +10,12 @@ The next line (0.2) replaces the copies with reusable workflows that each reposi
 
 It is a port of [warpdotdev-demos/cloud-factory-demo](https://github.com/warpdotdev-demos/cloud-factory-demo) from Warp's Oz runtime to [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action). It adds a product layer (`bet`), a prior-art gate (`novelty-gate`), risk-based autonomy, model tiers chosen for cost, and automatic dependency bumps between repositories.
 
+## The problem it solves
+
+One person with a handful of small repositories has more fixable issues than hours. Most of them are small and low-risk: a typo, a failing check, a bump, a contained feature. A few touch things that must not break: invariants, schemas, auth, data. Running an agent on everything is reckless; approving every step by hand costs the time it was meant to save.
+
+The factory draws that line per issue. Triage decides what an issue is (state), how big it is (size) and what it touches (risk), from the repository's own `FACTORY.md`. Small, low-risk work goes through spec, implementation and review without you; everything else waits for one label from you. Every stage runs as a GitHub Actions job on the repository's own secrets, writes only through pull requests, and ends in a review a human merges. The diagram below is that path.
+
 ## Flow
 
 ```mermaid
