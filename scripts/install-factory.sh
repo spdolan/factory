@@ -6,7 +6,9 @@
 #
 # Options:
 #   --create-labels      create the factory's labels on the GitHub repository (gh)
-#   --with-novelty DIR   also copy the novelty-audit skills from DIR (e.g. ~/code/novelty-audit/skills)
+#   --with-skills DIR    also copy every skill under DIR (each subdirectory with a SKILL.md),
+#                        e.g. the novelty-audit skills so the novelty gate can use them in CI.
+#                        --with-novelty DIR is an older name for the same option.
 #   --force              overwrite installed files that were changed locally
 #   --dry-run            print what would change without writing
 #
@@ -20,16 +22,15 @@ set -euo pipefail
 
 FACTORY_DIR="${FACTORY_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SKILLS=(triage spec write-product-spec write-tech-spec novelty-gate implementation validate-against-specs verify-behavior review-pr improve-review-pr bet dependency-bump)
-NOVELTY_SKILLS=(novelty-audit novelty-decompose prior-art-search similarity-scan novelty-classify novelty-tests)
 
-create_labels=false force=false dry_run=false novelty_dir=""
+create_labels=false force=false dry_run=false extra_dir=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --create-labels) create_labels=true ;;
     --force) force=true ;;
     --dry-run) dry_run=true ;;
-    --with-novelty) novelty_dir="${2:?--with-novelty needs a directory}"; shift ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    --with-skills|--with-novelty) extra_dir="${2:?$1 needs a directory}"; shift ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
   esac
   shift
@@ -88,11 +89,15 @@ for s in "${SKILLS[@]}"; do
   install_tree "$FACTORY_DIR/skills/$s" ".claude/skills/$s"
 done
 
-if [ -n "$novelty_dir" ]; then
-  for s in "${NOVELTY_SKILLS[@]}"; do
-    [ -d "$novelty_dir/$s" ] || { echo "missing $novelty_dir/$s" >&2; exit 1; }
-    install_tree "$novelty_dir/$s" ".claude/skills/$s"
+if [ -n "$extra_dir" ]; then
+  [ -d "$extra_dir" ] || { echo "missing $extra_dir" >&2; exit 1; }
+  found=0
+  for d in "$extra_dir"/*/; do
+    [ -f "$d/SKILL.md" ] || continue
+    s="$(basename "$d")"; found=$((found + 1))
+    install_tree "${d%/}" ".claude/skills/$s"
   done
+  [ "$found" -gt 0 ] || { echo "no skills (subdirectories with SKILL.md) in $extra_dir" >&2; exit 1; }
 fi
 
 install_tree "$FACTORY_DIR/templates/github/workflows" ".github/workflows"
@@ -103,7 +108,7 @@ create_once "$FACTORY_DIR/templates/repo/bets.md" bets.md
 
 factory_rev="$(git -C "$FACTORY_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 if [ "$dry_run" = false ]; then
-  # Keep entries for files this run didn't touch (e.g. novelty skills installed earlier).
+  # Keep entries for files this run didn't touch (e.g. extra skills installed earlier).
   if [ -f "$lock" ]; then
     carried="$(awk 'NR == FNR { seen[$2] = 1; next } /^#/ { next } !($2 in seen)' "$new_lock" "$lock")"
     [ -z "$carried" ] || printf '%s\n' "$carried" >> "$new_lock"
@@ -138,7 +143,7 @@ Factory@$factory_rev: $installed installed, $unchanged unchanged, $kept kept (ch
 
 Next:
   1. Fill in FACTORY.md (validation commands, protected paths, human-only areas, consumers, app).
-  2. Set secrets, variables and labels: Terragrunt in infra/ or by hand ($FACTORY_DIR/docs/setup.md).
+  2. Set secrets, variables and labels: Terragrunt with infra/modules/factory-repo, or by hand ($FACTORY_DIR/docs/setup.md).
      Secrets: CLAUDE_CODE_OAUTH_TOKEN (or ANTHROPIC_API_KEY) and FACTORY_GITHUB_TOKEN.
      Variables: FACTORY_AUTONOMY, FACTORY_VERIFY, FACTORY_TRIAGE_ALL, FACTORY_MODEL_*, FACTORY_EFFORT_*.
   3. If agents need toolchains or registry credentials, add .github/factory/setup.sh.

@@ -50,7 +50,7 @@ Some steps are always human: approving a spec (by adding `ready-to-implement`), 
 
 | Stage | Default model | When it's bigger |
 |---|---|---|
-| Triage | Haiku 5.5 | High effort for invariant-heavy or sensitive repositories (plinth, judicial_outcomes). On four plinth test cases it made the same safety calls as Sonnet 5.5, at about a tenth of the cost |
+| Triage | Haiku 5.5 | High effort for invariant-heavy or sensitive repositories. On four test cases from an invariant-heavy library it made the same safety calls as Sonnet 5.5, at about a tenth of the cost |
 | Implement | Haiku 5.5 for `factory:agent` issues | Sonnet 5.5 when a human approved it; Opus 5.5 (high effort) for `invariant-risk` |
 | Review | Haiku 5.5 for PRs of ≤400 changed lines | Sonnet 5.5 for larger PRs or `invariant-risk` |
 | Spec | Sonnet 5.5 | Opus 5.5 (high effort) for `invariant-risk` |
@@ -112,14 +112,14 @@ A proposal to replace per-repository reinstalls with reusable workflows, version
 
 The installer copies the skills into `.claude/skills/` and the workflows into `.github/workflows/`, and creates `FACTORY.md`, `vision.md` and `bets.md` if they're missing. It records checksums in `.claude/factory.lock`, so a reinstall upgrades unchanged files and keeps files you or the improve-review loop changed (`--force` overwrites them). Other options:
 
-- `--with-novelty ~/code/novelty-audit/skills` vendors the full novelty-audit skills so the gate can use them in CI
+- `--with-skills DIR` also copies every skill under `DIR` (each subdirectory with a `SKILL.md`), for example the full novelty-audit skills so the novelty gate can use them in CI
 - `--create-labels` creates the labels with `gh`, if you're not using Terragrunt
 - `--dry-run` shows what would change
 
 Then:
 
 1. Fill in `FACTORY.md`: validation commands, protected paths, human-only areas, consumers, and how to start the app.
-2. Set up credentials and settings by following [docs/setup.md](docs/setup.md). The fine-grained `FACTORY_GITHUB_TOKEN` is created by hand, and Terragrunt (`infra/`) applies the secrets, variables and labels to every repository.
+2. Set up credentials and settings by following [docs/setup.md](docs/setup.md). The fine-grained `FACTORY_GITHUB_TOKEN` is created by hand. The factory's Terraform module (`infra/modules/factory-repo`) applies the secrets, variables and labels; you instantiate it per repository from your own ops repository, so the factory itself names none of them.
 3. If agents need toolchains or registry credentials, add `.github/factory/setup.sh` (it receives `GITHUB_PACKAGES_TOKEN`).
 
 ## Using it locally
@@ -139,7 +139,7 @@ The skills are ordinary Claude Code skills:
 - **Per-repository config.** `FACTORY.md` holds validation commands, protected paths, human-only areas, consumers, and how to start the app.
 - **Cross-repository releases.** A library release notifies its consumers. Non-breaking releases are bumped by Haiku, and breaking ones go to a human.
 - **Verification.** Screenshots through Playwright MCP or gstack instead of Oz computer-use video. It is opt-in, for repositories with a UI.
-- **Infrastructure as code.** Terragrunt manages each repository's secrets, variables, labels and Actions permissions.
+- **Infrastructure as code.** A generic Terraform module manages each repository's secrets, variables, labels, Actions permissions and rulesets. Which repositories it applies to lives outside the factory.
 
 ## License
 

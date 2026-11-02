@@ -1,5 +1,10 @@
 # Factory settings for one GitHub repository: Actions secrets, Actions
-# variables, labels, and the permission for Actions to open pull requests.
+# variables, labels, the permission for Actions to open pull requests, and
+# optional rulesets for the default branch and release tags.
+#
+# Generic: it names no repository. Instantiate it from your own ops repository
+# (see docs/setup.md), pinned to a factory release:
+#   source = "git::https://github.com/<owner>/factory.git//infra/modules/factory-repo?ref=v0.1.0"
 
 terraform {
   required_version = ">= 1.5"
@@ -102,5 +107,47 @@ resource "github_repository_ruleset" "default_branch" {
     pull_request {
       required_approving_review_count = 0
     }
+  }
+}
+
+variable "protect_release_tags" {
+  description = "Only repository admins and GitHub Actions may create, move or delete v* tags. For a repository whose releases others run, such as the factory itself."
+  type        = bool
+  default     = false
+}
+
+# Consumers run whatever a release tag points to, so only the owner and the
+# release workflow may create, move or delete one.
+resource "github_repository_ruleset" "release_tags" {
+  count       = var.protect_release_tags ? 1 : 0
+  name        = "factory: protect release tags"
+  repository  = var.repository
+  target      = "tag"
+  enforcement = "active"
+
+  conditions {
+    ref_name {
+      include = ["refs/tags/v*"]
+      exclude = []
+    }
+  }
+
+  rules {
+    creation         = true
+    update           = true
+    deletion         = true
+    non_fast_forward = true
+  }
+
+  # Repository admin role, and the GitHub Actions app (the release workflow).
+  bypass_actors {
+    actor_id    = 5
+    actor_type  = "RepositoryRole"
+    bypass_mode = "always"
+  }
+  bypass_actors {
+    actor_id    = 15368
+    actor_type  = "Integration"
+    bypass_mode = "always"
   }
 }

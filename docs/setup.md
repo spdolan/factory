@@ -1,6 +1,6 @@
 # Setting up a repository
 
-Install the factory files into the repository (see the [README](../README.md#install-into-a-repository)), then give its workflows credentials and settings. The settings are managed with Terragrunt in [`infra/`](../infra). The manual steps below do the same thing.
+Install the factory files into the repository (see the [README](../README.md#install-into-a-repository)), then give its workflows credentials and settings. The settings are managed with Terragrunt and the factory's generic module, [`infra/modules/factory-repo`](../infra/modules/factory-repo), from an ops repository of your own. The manual steps below do the same thing.
 
 ## 1. Create the tokens
 
@@ -12,7 +12,7 @@ One fine-grained personal access token covers every repository the factory runs 
 
 1. Go to GitHub → Settings → Developer settings → Fine-grained tokens → **Generate new token**.
 2. **Name:** `factory`. **Expiration:** the longest your account allows. Put a reminder on your calendar a week before it expires.
-3. **Resource owner:** `spdolan`. **Repository access:** only select repositories (plinth, groundwork, judicial_outcomes, novelty_audit, and any new ones).
+3. **Resource owner:** your account or organization. **Repository access:** only select repositories: each repository the factory runs in, and add new ones as you install them. Never include the factory itself: agents hold this token, and every repository runs the factory's code.
 4. **Repository permissions:**
 
    | Permission | Access | Why |
@@ -39,6 +39,25 @@ Use one of these:
 
 ### With Terragrunt (recommended)
 
+The factory names no repository, so the list of repositories lives in an ops repository you own (private is fine), for example `<owner>/fleet`:
+
+```
+fleet/live/
+  root.hcl                 # provider, local state, shared inputs, module source
+  <repo>/terragrunt.hcl    # one per repository: include root.hcl, set repository and overrides
+  factory/terragrunt.hcl   # optional: protect the factory (protect_default_branch, protect_release_tags)
+```
+
+`root.hcl` pulls the module from the factory at a release tag:
+
+```hcl
+terraform {
+  source = "git::https://github.com/<owner>/factory.git//infra/modules/factory-repo?ref=v0.1.0"
+}
+```
+
+Its `inputs` hold the shared defaults (variables, labels, and secrets read from the environment with `get_env`). Each `<repo>/terragrunt.hcl` includes it with `merge_strategy = "deep"` and sets `repository` plus whatever differs.
+
 ```bash
 brew install terragrunt
 ```
@@ -47,12 +66,12 @@ brew install terragrunt
 export GITHUB_TOKEN="$(gh auth token)"
 export FACTORY_GITHUB_TOKEN='<the fine-grained token>'
 export CLAUDE_CODE_OAUTH_TOKEN='<from claude setup-token>'
-cd ~/code/factory/infra/live && terragrunt run --all plan
+cd ~/code/fleet/live && terragrunt run --all plan
 ```
 
-Then run the same command with `apply` in place of `plan`. Each repository has a directory under `infra/live/`. The shared defaults (models, effort, autonomy, labels) are in `root.hcl`, and each directory overrides only what differs. To add a repository, copy a directory and change `repository`.
+Then run the same command with `apply` in place of `plan`. To add a repository, copy a directory and change `repository`.
 
-State is local under `infra/live/.state/` and gitignored. It contains the secret values in plain text, so don't copy it anywhere unencrypted. A secret whose environment variable isn't set is left alone, so you can change variables without having the tokens on hand.
+Keep state local and gitignored (for example under `live/.state/`). It contains the secret values in plain text, so don't copy it anywhere unencrypted. A secret whose environment variable isn't set is left alone, so you can change variables without having the tokens on hand.
 
 To rotate the token, export the new value and apply again.
 
@@ -61,15 +80,15 @@ To rotate the token, export the new value and apply again.
 For each repository:
 
 ```bash
-gh secret set FACTORY_GITHUB_TOKEN --repo spdolan/<repo>
+gh secret set FACTORY_GITHUB_TOKEN --repo <owner>/<repo>
 ```
 
 ```bash
-gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo spdolan/<repo>
+gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo <owner>/<repo>
 ```
 
 ```bash
-gh variable set FACTORY_MODEL_TRIAGE --repo spdolan/<repo> --body claude-haiku-5-5
+gh variable set FACTORY_MODEL_TRIAGE --repo <owner>/<repo> --body claude-haiku-5-5
 ```
 
 ```bash
@@ -78,7 +97,7 @@ gh variable set FACTORY_MODEL_TRIAGE --repo spdolan/<repo> --body claude-haiku-5
 
 Also turn on **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**. Terragrunt manages this setting for you.
 
-## 3. Library releases (plinth)
+## 3. Library releases
 
 Add this job to the library's `release-please.yml`, after the publish job. Releases created with `GITHUB_TOKEN` don't trigger other workflows, so the call must come from the release-please workflow itself.
 
@@ -89,7 +108,7 @@ Add this job to the library's `release-please.yml`, after the publish job. Relea
     uses: ./.github/workflows/factory-notify-consumers.yml
     with:
       tag: ${{ needs.release-please.outputs.ts_tag }}
-      package: "@spdolan/plinth"
+      package: "@<owner>/<library>"
     secrets: inherit
 ```
 

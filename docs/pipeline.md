@@ -104,6 +104,14 @@ stages:
     output: { file: review.json, validate: review-pr/scripts/validate_review_json.py }
     apply: [publish-review]
 
+  update:                                            # rollout.md §6.2–6.3
+    on: [item.marker: factory:update]                # opened by the update check in any plan job
+    gated: true                                      # config.yml updates.advance: human | agent
+    skill: factory-update
+    agent: { tier: balanced, effort: medium, tools: [read, tracker-read, edit, shell], max_turns: 40 }
+    output: { patch: true, pr: factory-update }
+    apply: [render-stubs, open-pr]                   # render-stubs: the target version's `factory update`, never the agent
+
   # bet-intake, improve-review, dependency-bump follow the same shape
 ```
 
@@ -135,7 +143,7 @@ flowchart LR
   end
 ```
 
-- **plan** decides whether anything should run, and which stage. It resolves the tier, tools, prompt, runtime and flags, and writes them to the job summary. It reads `pipeline.yaml` from the pinned factory commit and `config.yml` from the repository.
+- **plan** decides whether anything should run, and which stage. It resolves the tier, tools, prompt, runtime and flags, and writes them to the job summary. It reads `pipeline.yaml` from the pinned factory commit and `config.yml` from the repository. It also runs the update check ([rollout.md §6.2](rollout.md#62-update-issues-instead-of-a-scheduled-job)). When a newer minor line or a pending flag exists and no update issue is open, plan asks apply to open one. That makes it the only place updates are noticed, and it costs nothing in idle repositories.
 - **agent** runs Claude Code through the chosen runtime adapter with read-only tokens. It produces one of three outputs:
   - structured JSON (triage)
   - a validated file (review)
@@ -184,9 +192,9 @@ comment <item> <file> create <title> <body-file> [--state s]
 
 ## When to do it
 
-**Do it in phase 1 of rollout.md, not as a separate later step.** Phase 1 rewrites every workflow into a reusable workflow anyway. Converting them first to nine bespoke reusable workflows, then to one generic runner, would mean rewriting them twice and migrating groundwork twice. Phase 0 (hygiene) is unaffected.
+**Do it in phase 1 of rollout.md, not as a separate later step.** Phase 1 rewrites every workflow into a reusable workflow anyway. Converting them first to nine bespoke reusable workflows, then to one generic runner, would mean rewriting them twice and migrating the test repository twice. Phase 0 (hygiene) is unaffected.
 
-The order within phase 1, each step tried on groundwork before the next:
+The order within phase 1, each step tried in the test repository before the next:
 
 1. **`pipeline.yaml`, tiers, tool profiles, prompt templates, `factory tracker`, and `stage.yml` for triage and review.** They already have the three-job shape, so this step only proves the runner and the config.
 2. **Implement and spec on patch output plus apply.** Agents lose `FACTORY_GITHUB_TOKEN`.

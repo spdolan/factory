@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Fail if the factory refers to a specific consuming repository. Dependencies
+# point one way: repositories depend on the factory, never the reverse.
+#
+#   scripts/check-references.sh
+#
+# Checks every tracked file for:
+#   - <owner>/<repo> or github.com/<owner>/<repo> where <repo> isn't the factory
+#   - @<owner>/<package> (a scoped package of the factory's owner)
+#   - an infra/live/ directory (per-repository infrastructure belongs in your ops repository)
+#   - any name in FACTORY_PRIVATE_NAMES (comma- or newline-separated, whole words,
+#     case-insensitive). Set it as an Actions secret, so the names you're keeping
+#     out of the factory don't have to be written into the factory to check for them.
+#
+# The owner and the factory's own name come from GITHUB_REPOSITORY in CI, or from
+# the origin remote locally.
+
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+slug="${GITHUB_REPOSITORY:-$(git remote get-url origin 2>/dev/null | sed -E 's#(\.git)?$##; s#.*[:/]([^/]+/[^/]+)$#\1#')}"
+owner="${slug%%/*}" self="${slug##*/}"
+if [ -z "$owner" ] || [ "$owner" = "$slug" ]; then
+  echo "Can't tell the factory's owner/name (set GITHUB_REPOSITORY)." >&2
+  exit 2
+fi
+
+status=0
+fail() { echo "::error::$*" >&2; status=1; }
+
+if git ls-files --error-unmatch infra/live >/dev/null 2>&1 || [ -n "$(git ls-files infra/live)" ]; then
+  fail "infra/live/ names specific repositories; it belongs in your ops repository (docs/setup.md)."
+fi
+
+# <owner>/<repo> other than <owner>/<self>; also @<owner>/<package>.
+files="$(git ls-files | grep -v '^scripts/check-references.sh$')"
+# shellcheck disable=SC2086 # file names in this repository have no spaces
+hits="$(grep -nEo "@?${owner}/[A-Za-z0-9_.-]+" $files 2>/dev/null |
+  awk -v self="$self" '{
+    m = $0; sub(/^[^:]*:[^:]*:/, "", m)            # the match, after file:line:
+    n = m; sub(/^@?[^\/]*\//, "", n); sub(/\.git$/, "", n); sub(/\.+$/, "", n)
+    if (m ~ /^@/ || n != self) print
+  }' || true)"
+if [ -n "$hits" ]; then
+  fail "references to other repositories of ${owner}:"
+  printf '%s\n' "$hits" >&2
+fi
+
+if [ -n "${FACTORY_PRIVATE_NAMES:-}" ]; then
+  while IFS= read -r name; do
+    name="$(printf '%s' "$name" | tr -d '[:space:]')"
+    [ -n "$name" ] || continue
+    # shellcheck disable=SC2086
+    if found="$(grep -nwiF -- "$name" $files 2>/dev/null)"; then
+      # Print locations only, so the secret name doesn't end up in the log.
+      fail "a name from FACTORY_PRIVATE_NAMES appears in: $(printf '%s\n' "$found" | cut -d: -f1,2 | tr '\n' ' ')"
+    fi
+  done < <(printf '%s\n' "$FACTORY_PRIVATE_NAMES" | tr ',' '\n')
+fi
+
+[ "$status" -eq 0 ] && echo "No references to other repositories."
+exit "$status"

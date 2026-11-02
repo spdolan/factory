@@ -27,8 +27,15 @@ jobs:
           terraform init -backend=false -input=false
           terraform validate
 
-      - name: Lint installer
-        run: shellcheck scripts/install-factory.sh
+      - name: Lint scripts
+        run: shellcheck scripts/*.sh
+
+      # The factory names no other repository. FACTORY_PRIVATE_NAMES (optional secret)
+      # lists bare names to look for without writing them into this public repository.
+      - name: No references to other repositories
+        env:
+          FACTORY_PRIVATE_NAMES: ${{ secrets.FACTORY_PRIVATE_NAMES }}
+        run: scripts/check-references.sh
 
       - name: Compile skill scripts
         run: python3 -m py_compile skills/*/scripts/*.py

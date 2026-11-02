@@ -26,7 +26,7 @@ Start a session by adding `factory:local` to an issue that has `ready-to-impleme
    ```
    Download `actions-runner-osx-arm64-<version>.tar.gz` from https://github.com/actions/runner/releases, verify it, extract it, then:
    ```bash
-   ./config.sh --unattended --url https://github.com/spdolan/<repo> --token "$(gh api -X POST repos/spdolan/<repo>/actions/runners/registration-token -q .token)" --name "$(scutil --get LocalHostName)-factory" --labels factory --work _work
+   ./config.sh --unattended --url https://github.com/<owner>/<repo> --token "$(gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token -q .token)" --name "$(scutil --get LocalHostName)-factory" --labels factory --work _work
    ```
    ```bash
    ./svc.sh install && ./svc.sh start
@@ -35,12 +35,12 @@ Start a session by adding `factory:local` to an issue that has `ready-to-impleme
 
    Turn off `SessionCreate`. The runner's LaunchAgent is installed with `SessionCreate = true`, which runs it in a separate security session without your login keychain, where the Claude CLI keeps its login (and `gh` its token):
    ```bash
-   ./svc.sh stop && plutil -replace SessionCreate -bool false ~/Library/LaunchAgents/actions.runner.spdolan-<repo>.*.plist && ./svc.sh start
+   ./svc.sh stop && plutil -replace SessionCreate -bool false ~/Library/LaunchAgents/actions.runner.<owner>-<repo>.*.plist && ./svc.sh start
    ```
    Reinstalling the service (`./svc.sh install`) turns it back on.
 2. **Clone the repository for sessions** over HTTPS, using `gh` for credentials. A LaunchAgent can't always reach your ssh-agent, and the job's token expires when the job ends.
    ```bash
-   mkdir -p ~/factory-work && cd ~/factory-work && git -c credential.helper='!gh auth git-credential' clone https://github.com/spdolan/<repo>.git
+   mkdir -p ~/factory-work && cd ~/factory-work && git -c credential.helper='!gh auth git-credential' clone https://github.com/<owner>/<repo>.git
    ```
    ```bash
    cd ~/factory-work/<repo> && git config credential.helper '!gh auth git-credential'

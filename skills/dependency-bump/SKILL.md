@@ -1,6 +1,6 @@
 ---
 name: dependency-bump
-description: Bump this repository's pin on an internal dependency to a new non-breaking release, update the lockfile, run the repository's validation commands, and open a PR. Use when the dependency-bump workflow runs after a library (such as plinth) releases, or when asked to bump an internal package to a released version.
+description: Bump this repository's pin on an internal dependency to a new non-breaking release, update the lockfile, run the repository's validation commands, and open a PR. Use when the dependency-bump workflow runs after an internal library releases, or when asked to bump an internal package to a released version.
 ---
 
 # Dependency bump

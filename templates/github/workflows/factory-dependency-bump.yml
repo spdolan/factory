@@ -20,11 +20,11 @@ on:
   workflow_dispatch:
     inputs:
       source_repo:
-        description: Released repository, e.g. spdolan/plinth
+        description: Released repository, e.g. owner/library
         required: true
         type: string
       package:
-        description: Package name, e.g. @spdolan/plinth
+        description: Package name, e.g. @owner/library
         required: true
         type: string
       tag:
