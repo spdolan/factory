@@ -111,13 +111,16 @@ resource "github_repository_ruleset" "default_branch" {
 }
 
 variable "protect_release_tags" {
-  description = "Only repository admins and GitHub Actions may create, move or delete v* tags. For a repository whose releases others run, such as the factory itself."
+  description = "Only GitHub Actions (the release workflow) may create, move or delete v* tags. For a repository whose releases others run, such as the factory itself."
   type        = bool
   default     = false
 }
 
-# Consumers run whatever a release tag points to, so only the owner and the
-# release workflow may create, move or delete one.
+# Consumers run whatever a release tag points to, so only the release workflow
+# may create, move or delete one. There is deliberately no bypass for repository
+# admins: local agent sessions run with the owner's login, which is an admin.
+# Roll back by dispatching the release workflow (rollback input); in a real
+# emergency, disable this ruleset in the repository settings for a moment.
 resource "github_repository_ruleset" "release_tags" {
   count       = var.protect_release_tags ? 1 : 0
   name        = "factory: protect release tags"
@@ -139,12 +142,7 @@ resource "github_repository_ruleset" "release_tags" {
     non_fast_forward = true
   }
 
-  # Repository admin role, and the GitHub Actions app (the release workflow).
-  bypass_actors {
-    actor_id    = 5
-    actor_type  = "RepositoryRole"
-    bypass_mode = "always"
-  }
+  # The GitHub Actions app: the release workflow.
   bypass_actors {
     actor_id    = 15368
     actor_type  = "Integration"

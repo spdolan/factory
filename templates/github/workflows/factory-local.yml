@@ -140,6 +140,10 @@ jobs:
           DENY="$DENY,Bash(git push origin HEAD:refs/heads/main:*),Bash(git checkout main:*),Bash(git switch main:*)"
           DENY="$DENY,Bash(gh pr merge:*),Bash(gh api:*),Bash(gh auth:*),Bash(gh secret:*),Bash(gh repo:*),Bash(gh workflow:*)"
           DENY="$DENY,Bash(sudo:*),Bash(security:*),Bash(curl:*),Bash(wget:*)"
+          # Tags: sessions never need them, and the owner's login can reach release tags others run.
+          DENY="$DENY,Bash(git tag:*),Bash(git push --tags:*),Bash(git push origin --tags:*),Bash(git push --follow-tags:*)"
+          DENY="$DENY,Bash(git push origin --follow-tags:*),Bash(git push origin refs/tags/:*),Bash(git push origin +:*),Bash(git push origin ::*)"
+          DENY="$DENY,Bash(git push --delete:*),Bash(git push origin --delete:*),Bash(git push -d:*),Bash(git push origin -d:*)"
           # The prompt goes first: --allowedTools and --disallowedTools take lists and would swallow it.
           out="$(claude "$prompt" --bg --worktree "gh-$ISSUE" --name "$REPO#$ISSUE $STAGE" --setting-sources "$SETTING_SOURCES" \
             --model "$MODEL" --effort "$EFFORT" --permission-mode dontAsk \

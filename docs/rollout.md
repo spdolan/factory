@@ -115,7 +115,7 @@ Each repository picks its ref. Nothing in the factory records the choice:
 | `@v0.2` (default) | every release in the 0.2 line | everyone else |
 | `@v0.2.3` | that release only | freezing a repository; Dependabot can bump it |
 
-Merging the release-please PR is the promotion. Until then, merged work runs only in repositories that track `main`, which gives the test repository a soak period for free. Rollback is a revert PR plus a release. In an emergency, move `v0.2` back by hand; the tag ruleset allows that for the owner only.
+Merging the release-please PR is the promotion. Until then, merged work runs only in repositories that track `main`, which gives the test repository a soak period for free. Rollback is a revert PR plus a release. In an emergency, dispatch the release workflow with `rollback: v0.2.3`, and it moves `v0.2` back to that release. Nobody moves tags by hand: the tag ruleset lets only the release workflow do it.
 
 ### 3. One commit per run, and a run that says what it ran
 
@@ -260,7 +260,7 @@ The factory is public and is the most powerful repository you own, so:
 
 - **Rulesets**, applied from your ops repository with `protect_default_branch` and `protect_release_tags`:
   - On `main`: changes only through a PR, no force pushes, no deletion.
-  - On `refs/tags/v*`: only the owner and GitHub Actions (the release workflow) may create, move or delete tags.
+  - On `refs/tags/v*`: only GitHub Actions (the release workflow) may create, move or delete tags. There is no bypass for admins, because local sessions run with your login, which is an admin. Roll back through the workflow's `rollback` input.
 - **No agent token covers the factory.**
 - **Pull requests from forks** run only the factory's own CI, which uses no secrets and never `pull_request_target`.
 - **The `factory-local` deny list** blocks tag pushes. The self-hosted runner should run as a dedicated macOS user. Until it does, keep local sessions in repositories pinned to a release.
@@ -318,4 +318,4 @@ None of these could be checked against GitHub's documentation while this was wri
 1. **Called workflows and caller variables.** Do `vars` in a called workflow resolve to the caller's repository variables? If not, the stub passes the kill-switch variables as inputs.
 2. **Finding the called workflow's commit.** Is `job_workflow_sha` available as a context, or only in the OIDC token? If neither works, the stub passes the ref as an input, and the first job resolves it once.
 3. **Check names.** Called jobs appear as `<stub job> / <called job name>`. Any required check has to be renamed once.
-4. **Tag-ruleset bypass on a personal account.** Does the ruleset's bypass for the repository admin role and for the GitHub Actions app work on a repository owned by a personal account? If not, the release workflow moves tags with a token that has Contents: write on the factory only, kept in the factory's secrets.
+4. **Tag-ruleset bypass on a personal account.** Does the bypass for the GitHub Actions app work on a repository owned by a personal account? If not, the release workflow moves tags with a token that has Contents: write on the factory only, kept in the factory's secrets.
