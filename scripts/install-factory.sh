@@ -119,22 +119,10 @@ fi
 
 if [ "$create_labels" = true ]; then
   while IFS='|' read -r name color desc; do
+    [ -n "$name" ] || continue
     echo "label   $name"
     [ "$dry_run" = true ] || gh label create "$name" --color "$color" --description "$desc" --force >/dev/null
-  done <<'LABELS'
-ready-to-implement|0E8A16|Factory: an agent may implement this now
-ready-to-spec|1D76DB|Factory: needs PRODUCT.md and TECH.md first
-needs-info|FBCA04|Factory: blocked on questions in the triage comment
-wait-to-implement|C5DEF5|Factory: doesn't fit the vision or an open bet yet
-spec-ready-for-review|5319E7|Factory: specs PR is ready for a human
-invariant-risk|B60205|Factory: touches protected paths; Opus and human review
-factory:agent|0E8A16|Factory: small and low risk; agents advance it
-factory:awaiting-approval|FBCA04|Factory: a human must approve the next stage
-factory:approved|0E8A16|Factory: human approval to start the next stage
-factory:local|006B75|Factory: run the next stage as a session on the self-hosted machine
-factory:proposed|EDEDED|Factory: drafted by the bet skill
-maintenance|EDEDED|Bugs, CI, dependencies, security: needs no bet
-LABELS
+  done < "$FACTORY_DIR/templates/labels.txt"
 fi
 
 cat <<EOF
@@ -143,8 +131,11 @@ Factory@$factory_rev: $installed installed, $unchanged unchanged, $kept kept (ch
 
 Next:
   1. Fill in FACTORY.md (validation commands, protected paths, human-only areas, consumers, app).
-  2. Set secrets, variables and labels: Terragrunt with infra/modules/factory-repo, or by hand ($FACTORY_DIR/docs/setup.md).
-     Secrets: CLAUDE_CODE_OAUTH_TOKEN (or ANTHROPIC_API_KEY) and FACTORY_GITHUB_TOKEN.
-     Variables: FACTORY_AUTONOMY, FACTORY_VERIFY, FACTORY_TRIAGE_ALL, FACTORY_MODEL_*, FACTORY_EFFORT_*.
+  2. Declare this repository a consumer (the factory topic) and fix its labels and Actions settings:
+       $FACTORY_DIR/scripts/factory doctor --fix
+     Set its secrets, CLAUDE_CODE_OAUTH_TOKEN (or ANTHROPIC_API_KEY) and FACTORY_GITHUB_TOKEN:
+       $FACTORY_DIR/scripts/factory rotate-secrets
+     Optional variables: FACTORY_AUTONOMY, FACTORY_VERIFY, FACTORY_TRIAGE_ALL, FACTORY_MODEL_*, FACTORY_EFFORT_*.
+     Details: $FACTORY_DIR/docs/setup.md
   3. If agents need toolchains or registry credentials, add .github/factory/setup.sh.
 EOF

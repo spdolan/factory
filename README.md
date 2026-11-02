@@ -117,13 +117,13 @@ A proposal to replace per-repository reinstalls with reusable workflows, version
 The installer copies the skills into `.claude/skills/` and the workflows into `.github/workflows/`, and creates `FACTORY.md`, `vision.md` and `bets.md` if they're missing. It records checksums in `.claude/factory.lock`, so a reinstall upgrades unchanged files and keeps files you or the improve-review loop changed (`--force` overwrites them). Other options:
 
 - `--with-skills DIR` also copies every skill under `DIR` (each subdirectory with a `SKILL.md`), for example the full novelty-audit skills so the novelty gate can use them in CI
-- `--create-labels` creates the labels with `gh`, if you're not using Terragrunt
+- `--create-labels` creates the labels with `gh` (`scripts/factory doctor --fix` does this too)
 - `--dry-run` shows what would change
 
 Then:
 
 1. Fill in `FACTORY.md`: validation commands, protected paths, human-only areas, consumers, and how to start the app.
-2. Set up credentials and settings by following [docs/setup.md](docs/setup.md). The fine-grained `FACTORY_GITHUB_TOKEN` is created by hand. The factory's Terraform module (`infra/modules/factory-repo`) applies the secrets, variables and labels; you instantiate it per repository from your own ops repository, so the factory itself names none of them.
+2. Set up credentials and settings by following [docs/setup.md](docs/setup.md). The fine-grained `FACTORY_GITHUB_TOKEN` is created by hand. Then `scripts/factory doctor --fix`, run inside the repository, declares it a consumer (the `factory` topic) and sets its labels and Actions settings, and `scripts/factory rotate-secrets` sets the secrets on every declared repository. The factory itself names none of them.
 3. If agents need toolchains or registry credentials, add `.github/factory/setup.sh` (it receives `GITHUB_PACKAGES_TOKEN`).
 
 ## Using it locally
@@ -143,7 +143,7 @@ The skills are ordinary Claude Code skills:
 - **Per-repository config.** `FACTORY.md` holds validation commands, protected paths, human-only areas, consumers, and how to start the app.
 - **Cross-repository releases.** A library release notifies its consumers. Non-breaking releases are bumped by Haiku, and breaking ones go to a human.
 - **Verification.** Screenshots through Playwright MCP or gstack instead of Oz computer-use video. It is opt-in, for repositories with a UI.
-- **Infrastructure as code.** A generic Terraform module manages each repository's secrets, variables, labels, Actions permissions and rulesets. Which repositories it applies to lives outside the factory.
+- **Self-declared consumers.** Each repository marks itself with the `factory` topic; `scripts/factory` finds repositories by it to set secrets, and checks and fixes each one's labels, Actions settings and rulesets. No infra state, and the factory lists no repositories.
 
 ## License
 

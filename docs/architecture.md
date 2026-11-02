@@ -4,7 +4,7 @@ Status: target architecture for 0.2, as proposed in [rollout.md](rollout.md) and
 
 ## Components
 
-Each repository keeps a thin stub and its own settings. Everything else runs from the factory, pinned to the release line the stub calls. The factory names no repository. The ops repository holds the list of repositories and the infra applied to them.
+Each repository keeps a thin stub and its own settings. Everything else runs from the factory, pinned to the release line the stub calls. The factory names no repository: each repository declares itself a consumer (on GitHub, the `factory` topic), and the factory's CLI finds repositories by that declaration to set their secrets and settings.
 
 ```mermaid
 flowchart LR
@@ -13,19 +13,15 @@ flowchart LR
     REL["Releases<br/>v0.2.3, line tag v0.2<br/>test repository: main"]
     STAGE["stage.yml<br/>plan → agent → apply"]
     DEF["pipeline.yaml · features.yaml<br/>skills · prompt templates · prepare"]
-    MOD["infra/modules/factory-repo"]
+    CLI["scripts/factory<br/>doctor · rotate-secrets · protect"]
   end
 
-  subgraph C["consuming repository"]
+  subgraph C["consuming repository · topic: factory"]
     direction TB
     STUB["Stub workflow<br/>triggers · permission ceiling<br/>secrets by name · uses …@v0.2"]
     RCFG[".github/factory/config.yml<br/>tiers · autonomy · runtime<br/>flag opt-outs · updates"]
     OWN["FACTORY.md · review-pr-local<br/>setup.sh · its own skills"]
     VARS["Repository variables<br/>kill switch"]
-  end
-
-  subgraph O["ops repository (private)"]
-    LIVE["live/REPO/terragrunt.hcl"]
   end
 
   RUN["Runtime<br/>GitHub-hosted runner<br/>or self-hosted local session"]
@@ -41,12 +37,11 @@ flowchart LR
   STAGE -->|"agent job, read-only"| RUN
   RUN --> CLAUDE
   STAGE -->|"apply job: the only writes"| GH
-  LIVE -->|"module at a release tag"| MOD
-  LIVE -->|"secrets · labels · rulesets"| C
-  LIVE -->|"rulesets on main and v* tags"| F
+  CLI -.->|"finds by topic; secrets · labels ·<br/>Actions settings · branch ruleset"| C
+  CLI -.->|"protect: rulesets on main and v* tags"| F
 ```
 
-Dependencies point one way. The consuming repository calls the factory, and the ops repository depends on both. The factory depends on neither, and `scripts/check-references.sh` enforces that in CI.
+Dependencies point one way: the consuming repository calls the factory and declares itself with its topic, and the factory depends on none of them. `scripts/check-references.sh` enforces that in CI. You run the CLI from your machine with your own `gh` login.
 
 ## How an issue flows
 

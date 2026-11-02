@@ -9,7 +9,7 @@ The factory's process is written out in bash and YAML across nine workflow files
 | Concept | Where it lives today | Count |
 |---|---|---|
 | Workflow states and gates (`ready-to-implement`, `factory:approved`, …) | `if:` conditions, `case` statements, `gh issue edit` calls, skill text | ~100 occurrences in 11 files |
-| Model IDs | workflow defaults, infra variables, README | 41 |
+| Model IDs | workflow defaults, infra variables (since removed), README | 41 |
 | Tool permissions | a hand-written `--allowedTools` string per workflow | 8 workflows, 10 strings |
 | Prompts | inline `prompt: \|` blocks; `factory-local.yml` builds its own copy | 8 workflows, already drifting (implement and local disagree on UI verification) |
 | Who may advance an issue | a `case` table in triage's apply job, plus `if:` conditions in spec, implement and local | 4 places |

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Fail if the factory refers to a specific consuming repository. Dependencies
-# point one way: repositories depend on the factory, never the reverse.
+# point one way: repositories depend on the factory, never the reverse. Consumers
+# declare themselves (the `factory` topic; see scripts/factory), so nothing here lists them.
 #
 #   scripts/check-references.sh
 #
 # Checks every tracked file for:
 #   - <owner>/<repo> or github.com/<owner>/<repo> where <repo> isn't the factory
 #   - @<owner>/<package> (a scoped package of the factory's owner)
-#   - an infra/live/ directory (per-repository infrastructure belongs in your ops repository)
 #   - any name in FACTORY_PRIVATE_NAMES (comma- or newline-separated, whole words,
 #     case-insensitive). Set it as an Actions secret, so the names you're keeping
 #     out of the factory don't have to be written into the factory to check for them.
@@ -27,10 +27,6 @@ fi
 
 status=0
 fail() { echo "::error::$*" >&2; status=1; }
-
-if git ls-files --error-unmatch infra/live >/dev/null 2>&1 || [ -n "$(git ls-files infra/live)" ]; then
-  fail "infra/live/ names specific repositories; it belongs in your ops repository (docs/setup.md)."
-fi
 
 # <owner>/<repo> other than <owner>/<self>; also @<owner>/<package>.
 files="$(git ls-files | grep -v '^scripts/check-references.sh$')"

@@ -1,6 +1,6 @@
 # Setting up a repository
 
-Install the factory files into the repository (see the [README](../README.md#install-into-a-repository)), then give its workflows credentials and settings. The settings are managed with Terragrunt and the factory's generic module, [`infra/modules/factory-repo`](../infra/modules/factory-repo), from an ops repository of your own. The manual steps below do the same thing.
+Install the factory files into the repository (see the [README](../README.md#install-into-a-repository)), then give its workflows credentials and settings with the factory's CLI, [`scripts/factory`](../scripts/factory). The manual steps below do the same thing.
 
 ## 1. Create the tokens
 
@@ -37,47 +37,39 @@ Use one of these:
 
 ## 2. Apply the settings
 
-### With Terragrunt (recommended)
+### With the factory CLI (recommended)
 
-The factory names no repository, so the list of repositories lives in an ops repository you own (private is fine), for example `<owner>/fleet`:
+Each repository declares on its own side that it uses the factory, and the factory's CLI finds and configures repositories by that declaration. The factory itself lists none of them. On GitHub the declaration is the `factory` repository topic.
 
-```
-fleet/live/
-  root.hcl                 # provider, local state, shared inputs, module source
-  <repo>/terragrunt.hcl    # one per repository: include root.hcl, set repository and overrides
-  factory/terragrunt.hcl   # optional: protect the factory (protect_default_branch, protect_release_tags)
-```
-
-`root.hcl` pulls the module from the factory at a release tag:
-
-```hcl
-terraform {
-  source = "git::https://github.com/<owner>/factory.git//infra/modules/factory-repo?ref=v0.1.0"
-}
-```
-
-Its `inputs` hold the shared defaults (variables, labels, and secrets read from the environment with `get_env`). Each `<repo>/terragrunt.hcl` includes it with `merge_strategy = "deep"` and sets `repository` plus whatever differs.
+From inside the consuming repository:
 
 ```bash
-brew install terragrunt
+~/code/factory/scripts/factory doctor          # report what's missing
+~/code/factory/scripts/factory doctor --fix    # add the topic, labels and Actions settings
 ```
 
+`doctor --fix` adds the `factory` topic, creates any missing labels (from `templates/labels.txt`), and sets Actions to a read-only default token that may create and approve pull requests. It reports the secrets but can't set them, because it never sees their values. Add `--protect-default-branch` to also require a pull request and block force pushes on the default branch. Rulesets on private repositories need GitHub Pro or higher.
+
+Then set the secrets on every repository that has the topic, from anywhere:
+
 ```bash
-export GITHUB_TOKEN="$(gh auth token)"
 export FACTORY_GITHUB_TOKEN='<the fine-grained token>'
 export CLAUDE_CODE_OAUTH_TOKEN='<from claude setup-token>'
-cd ~/code/fleet/live && terragrunt run --all plan
+~/code/factory/scripts/factory rotate-secrets --dry-run   # list where they would go
+~/code/factory/scripts/factory rotate-secrets
 ```
 
-Then run the same command with `apply` in place of `plan`. To add a repository, copy a directory and change `repository`.
+It sets only the secrets you exported, pipes each value to `gh` (never on a command line), writes nothing to disk, and lists every repository it updated. A repository missing from that list lacks the topic. To rotate a token, export the new value and run it again.
 
-Keep state local and gitignored (for example under `live/.state/`). It contains the secret values in plain text, so don't copy it anywhere unencrypted. A secret whose environment variable isn't set is left alone, so you can change variables without having the tokens on hand.
-
-To rotate the token, export the new value and apply again.
+Per-repository settings such as `FACTORY_AUTONOMY` or `FACTORY_MODEL_TRIAGE` are optional repository variables, set with `gh variable set` (below). In 0.2 they move into each repository's `.github/factory/config.yml`.
 
 ### By hand
 
 For each repository:
+
+```bash
+gh repo edit <owner>/<repo> --add-topic factory
+```
 
 ```bash
 gh secret set FACTORY_GITHUB_TOKEN --repo <owner>/<repo>
@@ -95,7 +87,17 @@ gh variable set FACTORY_MODEL_TRIAGE --repo <owner>/<repo> --body claude-haiku-5
 ~/code/factory/scripts/install-factory.sh --create-labels
 ```
 
-Also turn on **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**. Terragrunt manages this setting for you.
+Also turn on **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**. `factory doctor --fix` sets this for you.
+
+### Protecting the factory
+
+Every consuming repository runs the factory's code with its own secrets, so protect the factory too. From inside the factory:
+
+```bash
+scripts/factory protect
+```
+
+It creates (or updates) two rulesets. On `main`, changes go only through a pull request, with no force pushes or deletion. On `v*` tags, only GitHub Actions (the release workflow) may create, move or delete them. There is no admin bypass, because local agent sessions run with your login. Never add the factory to `FACTORY_GITHUB_TOKEN`'s repositories, and never give it the `factory` topic.
 
 ## 3. Library releases
 

@@ -38,24 +38,21 @@ flowchart LR
     PR["PR, conventional title"] --> Main["main"]
     Main -->|"release-please PR merged"| Rel["v0.2.3<br/>moves v0.2"]
     RW["reusable workflows<br/>skills, scripts<br/>pipeline.yaml, features.yaml"]
-    Mod["infra/modules/factory-repo"]
+    CLI["scripts/factory<br/>doctor · rotate-secrets · protect"]
   end
-  subgraph test["test repository"]
+  subgraph test["test repository · topic: factory"]
     TStub["stubs → @main"]
     TCfg["config.yml<br/>features: preview: all"]
   end
-  subgraph other["other repositories"]
+  subgraph other["other repositories · topic: factory"]
     Stub["stubs → @v0.2"]
     Cfg["config.yml<br/>features: off: [...]"]
     Upd["factory:update issue<br/>(opened by a normal run)"]
   end
-  subgraph ops["your ops repository"]
-    Live["live/&lt;repo&gt;/terragrunt.hcl"]
-  end
   TStub --> RW
   Stub --> RW
-  RW -. "newer line or pending flags" .-> Upd
-  Live -->|"source = …//infra/modules/factory-repo?ref=v0.2.3"| Mod
+  RW -.->|"newer line or pending flags"| Upd
+  CLI -.->|"finds consumers by their topic;<br/>sets secrets, labels, Actions settings"| other
 ```
 
 ### 1. Reusable workflows called by small stubs
@@ -247,18 +244,20 @@ factory try review 42 --ref my-branch
 
 Under `dry_run`, every stage skips its apply job. Implement and spec upload their patch as an artifact instead of opening a PR. `try` runs a factory branch with that repository's secrets, so only run branches you wrote.
 
-### 8. Infra lives outside the factory
+### 8. Consumers declare themselves; no infra
 
-- **The factory ships only the generic module**, `infra/modules/factory-repo`. It covers secrets, labels, Actions permissions and the default-branch ruleset, and, for a repository that publishes releases others run (the factory itself), the release-tag ruleset.
-- **Your ops repository** instantiates the module per repository and pins it to a factory release. It's the one place that lists your repositories. See [setup.md](setup.md).
-- **Model, effort and autonomy settings move into each repository's `config.yml`** in 0.2.
-- **Labels** come from one `labels.yaml`. Workflows already create missing labels when they need them.
+- **The mechanic.** Each repository declares on its own side that it consumes the factory, and the factory's CLI discovers consumers by that declaration. The factory never lists them, and there is no separate ops repository or infra state.
+- **The implementation on GitHub.** The declaration is a repository topic, `factory` (`FACTORY_TOPIC` overrides it). `gh repo list <owner> --topic factory` finds every consumer your login can see. A host other than GitHub would keep the mechanic and change only this detail.
+- **`factory doctor [--fix]`**, run inside a repository, checks and repairs its declaration, labels and Actions settings, reports its secrets, and with `--protect-default-branch` its default-branch ruleset. It reports drift one repository at a time; there is no fleet-wide plan.
+- **`factory rotate-secrets`** sets each exported secret on every declared repository and prints the list. A consumer missing from it lacks the declaration. Secret values are piped to `gh` and never stored, which removes the plaintext secrets that Terraform state held.
+- **Model, effort and autonomy settings** stay optional repository variables until 0.2, then move into each repository's `config.yml`.
+- **Labels** come from one file, `templates/labels.txt`, read by `doctor` and the installer. Workflows already create missing labels when they need them.
 
 ### 9. Protecting the factory
 
 The factory is public and is the most powerful repository you own, so:
 
-- **Rulesets**, applied from your ops repository with `protect_default_branch` and `protect_release_tags`:
+- **Rulesets**, set with `scripts/factory protect`, run inside the factory:
   - On `main`: changes only through a PR, no force pushes, no deletion.
   - On `refs/tags/v*`: only GitHub Actions (the release workflow) may create, move or delete tags. There is no bypass for admins, because local sessions run with your login, which is an admin. Roll back through the workflow's `rollback` input.
 - **No agent token covers the factory.**
@@ -272,7 +271,9 @@ The factory is public and is the most powerful repository you own, so:
 | `factory install` | first setup: stubs at the current minor line, `.gitignore` block, SessionStart hook, `config.yml`, `FACTORY.md`, `vision.md`, `bets.md` |
 | `factory update [--to v0.3]` | renders stubs for a version and applies its `MIGRATION.md` steps that a script can do; the update stage's apply job runs the same thing |
 | `factory try …` | §7 |
-| `factory doctor` | checks that the secrets, labels, config schema and stubs match the version the stubs call |
+| `factory doctor [--fix]` | checks and repairs the consumer declaration, labels and Actions settings, and reports secrets; in 0.2 also the config schema and whether the stubs match the version they call. Exists today |
+| `factory rotate-secrets` | sets exported secrets on every declared consumer. Exists today |
+| `factory protect` | run inside the factory: rulesets on `main` and `v*` tags. Exists today |
 | `factory materialize` | what the SessionStart hook runs |
 
 ## Credentials
@@ -286,11 +287,11 @@ The factory is public and is the most powerful repository you own, so:
 ## Migration
 
 **Phase 0: hygiene, ending in v0.1.0.** On the branch now:
-1. Remove every reference to another repository and move `infra/live/` to your ops repository. Add `scripts/check-references.sh` to CI. Make the installer's extra skills generic (`--with-skills`).
+1. Remove every reference to another repository, and replace the Terraform infra with self-declared consumers and `scripts/factory` (`doctor`, `rotate-secrets`, `protect`). Add `scripts/check-references.sh` to CI. Make the installer's extra skills generic (`--with-skills`).
 2. Point improve-review-pr at `review-pr-local` only.
-3. Block tag pushes in `factory-local`. Add `protect_release_tags` to the module, and apply both rulesets to the factory from your ops repository.
+3. Block tag pushes in `factory-local`. `factory protect` sets the factory's rulesets.
 4. Add the PR-title lint and release-please (pre-1.0 settings, moving `v0.N` tags).
-5. Make the repository public, merge, and cut v0.1.0.
+5. Merge, make the repository public, run `factory protect`, tag each consumer (`factory doctor --fix`), run `factory rotate-secrets`, delete the old Terragrunt state, and cut v0.1.0.
 
 **Phase 1: the test repository on `@main`; ships as v0.2.0.**
 1. Build the reusable workflows as the generic stage runner from [pipeline.md](pipeline.md), along with:
@@ -308,7 +309,7 @@ The factory is public and is the most powerful repository you own, so:
 **Phase 2: everyone else on `@v0.2`.**
 1. Run `factory install` once in each repository. That is one PR each, and the last manual install.
 2. After that, every adoption is an update issue.
-3. Move each repository's settings from your ops repository into its `config.yml`.
+3. Move each repository's settings from its repository variables into its `config.yml`.
 4. Delete `templates/github/workflows/` and the installer's copy mode.
 
 ## Open questions to prove in phase 1
