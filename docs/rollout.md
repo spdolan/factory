@@ -1,6 +1,6 @@
 # Rolling out factory changes
 
-Status: proposal, third draft. Phase 0 is in progress. The factory is going public, versions stay below 1.0 so this architecture ships as a minor release, and repositories learn about updates through issues the factory opens during runs that happen anyway, not from a scheduled job. The companion [pipeline.md](pipeline.md) makes the stages themselves configuration.
+Status: proposal, third draft. Phase 0 is in progress. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md). The factory is going public, versions stay below 1.0 so this architecture ships as a minor release, and repositories learn about updates through issues the factory opens during runs that happen anyway, not from a scheduled job. The companion [pipeline.md](pipeline.md) makes the stages themselves configuration.
 
 ## The problem
 

@@ -1,6 +1,6 @@
 # A configuration-driven pipeline
 
-Status: proposal, a companion to [rollout.md](rollout.md). Nothing here is built yet.
+Status: proposal, a companion to [rollout.md](rollout.md). Nothing here is built yet. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md).
 
 ## The problem
 
