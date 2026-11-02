@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   resolve:
-    name: Resolve pull request
+    name: "1 of 3: Prepare diff, pick model"
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -80,7 +80,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   review:
-    name: Review pull request
+    name: "2 of 3: Agent reviews (read-only)"
     needs: resolve
     if: needs.resolve.outputs.eligible == 'true'
     runs-on: ubuntu-latest
@@ -293,7 +293,7 @@ jobs:
           retention-days: 1
 
   publish:
-    name: Publish review
+    name: "3 of 3: Validate and post"
     needs: [resolve, review]
     runs-on: ubuntu-latest
     permissions:
