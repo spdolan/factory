@@ -1,0 +1,98 @@
+name: Release
+
+# release-please keeps a release PR open from the conventional PR titles merged to
+# main. Merging that PR is the release: it tags vX.Y.Z and this workflow moves the
+# line tag that consuming repositories call (v0.N before 1.0, vN after).
+#
+# Before 1.0 the minor number is the breaking-change number (docs/rollout.md §2):
+#   fix:, feat:  -> patch (0.2.3 -> 0.2.4); new behavior ships behind a flag
+#   feat!:       -> minor (0.2.4 -> 0.3.0); repositories adopt it through an update issue
+#
+# Rollback: dispatch this workflow with `rollback` set to an earlier release
+# (e.g. v0.2.3). It moves that release's line tag (v0.2) back to it. The
+# release-tag ruleset lets only this workflow move tags.
+#
+# Repository settings this relies on: squash merges with the PR title as the
+# commit message, and "Allow GitHub Actions to create and approve pull requests".
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      rollback:
+        description: Move a line tag back to this earlier release, e.g. v0.2.3. Leave empty to run release-please.
+        required: false
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Release PR and tags
+    if: inputs.rollback == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - uses: actions/checkout@v4
+        if: steps.rp.outputs.release_created == 'true'
+        with:
+          fetch-depth: 0
+
+      - name: Move the line tag
+        if: steps.rp.outputs.release_created == 'true'
+        env:
+          TAG: ${{ steps.rp.outputs.tag_name }}
+          MAJOR: ${{ steps.rp.outputs.major }}
+          MINOR: ${{ steps.rp.outputs.minor }}
+        run: |
+          set -euo pipefail
+          if [ "$MAJOR" = 0 ]; then line="v0.$MINOR"; else line="v$MAJOR"; fi
+          git fetch --tags --force
+          git tag -f "$line" "$TAG^{commit}"
+          git push -f origin "refs/tags/$line"
+          echo "Released $TAG; $line now points to it." | tee -a "$GITHUB_STEP_SUMMARY"
+
+  rollback:
+    name: Roll a line tag back
+    if: inputs.rollback != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move the line tag back
+        env:
+          TARGET: ${{ inputs.rollback }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TARGET" =~ ^v([0-9]+)\.([0-9]+)\.[0-9]+$ ]]; then
+            echo "::error::rollback must be a release tag like v0.2.3, not '$TARGET'." >&2
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}"
+          if [ "$major" = 0 ]; then line="v0.$minor"; else line="v$major"; fi
+          git fetch --tags --force
+          git rev-parse -q --verify "refs/tags/$TARGET" >/dev/null || { echo "::error::No release $TARGET." >&2; exit 1; }
+          was="$(git rev-parse -q --verify "refs/tags/$line^{commit}" || echo none)"
+          git tag -f "$line" "$TARGET^{commit}"
+          git push -f origin "refs/tags/$line"
+          echo "Rolled $line back to $TARGET (was ${was:0:12})." | tee -a "$GITHUB_STEP_SUMMARY"

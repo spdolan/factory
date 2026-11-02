@@ -101,6 +101,10 @@ All of them run `anthropics/claude-code-action@v1.0.245`.
 | `factory-dependency-bump.yml` | `repository_dispatch` from a library release; dispatch |
 | `factory-local.yml` | `factory:local` on a `ready-to-implement` or `ready-to-spec` issue; dispatch. Starts a background Claude Code session on a self-hosted machine ([docs/local-runner.md](docs/local-runner.md)) |
 
+## Versions
+
+Releases come from [release-please](https://github.com/googleapis/release-please) and conventional PR titles, which a CI check enforces. Before 1.0, the minor number is the breaking-change number: `fix:` and `feat:` cut a patch release (new behavior ships behind a flag), and `feat!:` cuts the next minor line. Each release moves its line tag (`v0.1`, `v0.2`, …), which repositories will call once the reusable workflows land ([docs/rollout.md](docs/rollout.md) §2). Merge the open release PR to release. To roll back, dispatch the Release workflow with `rollback: v0.2.3`.
+
 ## Install into a repository
 
 ```bash
