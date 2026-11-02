@@ -260,7 +260,7 @@ The factory is the most powerful repository you own, so:
 - **Rulesets**, set with `scripts/factory protect`, run inside the factory:
   - On `main`: changes only through a PR, no force pushes, no deletion.
   - Rulesets are free on a public repository; a private one needs GitHub Pro or higher (§11).
-  - On `refs/tags/v*`: only GitHub Actions (the release workflow) may create, move or delete tags. There is no bypass for admins, because local sessions run with your login, which is an admin. Roll back through the workflow's `rollback` input.
+  - On `refs/tags/v*`: only the release workflow's GitHub App may create, move or delete tags (open question 4: the GitHub Actions app can't be a bypass actor on a personal account). There is no bypass for admins, because local sessions run with your login, which is an admin. Roll back through the workflow's `rollback` input.
 - **No agent token covers the factory.**
 - **Pull requests from forks** run only the factory's own CI, which never uses `pull_request_target`. Its only secret, `FACTORY_PRIVATE_NAMES`, is empty on fork PRs, so that check is skipped for them and runs again on `main`.
 - **The `factory-local` deny list** blocks tag pushes. The self-hosted runner should run as a dedicated macOS user. Until it does, keep local sessions in repositories pinned to a release.
@@ -300,6 +300,7 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
 | `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` | each repository | unchanged |
 | `FACTORY_READ_TOKEN` | each repository, **only while the factory is private** | fine-grained, the factory only, Contents: read. Set and renewed by `factory rotate-secrets` |
 | `FACTORY_PRIVATE_NAMES` (optional) | the factory | names `check-references.sh` must never find, kept out of the code (it matters most if the factory goes public) |
+| `FACTORY_RELEASE_APP_CLIENT_ID`, `FACTORY_RELEASE_APP_PRIVATE_KEY` | the factory | a GitHub App you own, installed on the factory only: the one actor that may create or move `v*` tags. Used by the release workflow alone; no agent runs in the factory's CI |
 
 ## Migration
 
@@ -343,5 +344,8 @@ Tested on 2026-11-02 with a throwaway reusable workflow in the private factory, 
 
 Still open:
 
-4. **Tag-ruleset bypass on a personal account.** Does the bypass for the GitHub Actions app work on a repository owned by a personal account? If not, the release workflow moves tags with a token that has Contents: write on the factory only, kept in the factory's secrets.
+4. **Tag-ruleset bypass on a personal account: no.** Tested 2026-11-02 on the factory itself: the rulesets API rejects the GitHub Actions app as a bypass actor with "Actor GitHub Actions integration must be part of the ruleset source or owner organization". The tag ruleset exists without any bypass, which blocks every `v*` tag, including the ones release-please creates. Before the first release, pick one:
+   - **A GitHub App you own**, installed on the factory, as the bypass actor. The release workflow mints an installation token (`actions/create-github-app-token`) and gives it to release-please and the tag push. This also makes release PRs trigger CI, since they are no longer opened with `GITHUB_TOKEN`. Two secrets on the factory (app ID, private key); no agent runs in the factory's CI. Recommended.
+   - **A deploy key** with write access as the bypass actor, used only for the tag push. release-please's own tag creation still needs a bypass, so this alone is not enough.
+   - **A fine-grained PAT** needs the admin role as a bypass actor, which is the admin bypass the design rejects (local sessions run with your login).
 6. **GitHub Pro.** Rulesets on a private factory need it. Checked 2026-11-02: the account is GitHub Free (`gh api repos/<owner>/factory/rulesets` answers 403, "Upgrade to GitHub Pro or make this repository public"), so today `factory protect` and `doctor --protect-default-branch --fix` fail on every private repository. Either upgrade (which also lets the other private repositories protect `main`) or make the factory public.

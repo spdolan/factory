@@ -14,6 +14,12 @@ name: Release
 #
 # Repository settings this relies on: squash merges with the PR title as the
 # commit message, and "Allow GitHub Actions to create and approve pull requests".
+#
+# Tokens: the release-tag ruleset lets only one actor create or move v* tags, a
+# GitHub App you own (docs/setup.md, "Protecting the factory"). Each job mints a
+# short-lived installation token from FACTORY_RELEASE_APP_CLIENT_ID and
+# FACTORY_RELEASE_APP_PRIVATE_KEY and uses it for release-please and the tag push.
+# A side effect: release PRs are opened by the app, not GITHUB_TOKEN, so CI runs on them.
 
 on:
   push:
@@ -39,12 +45,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     steps:
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.FACTORY_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.FACTORY_RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - id: rp
         uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
         with:
+          token: ${{ steps.app.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
@@ -52,6 +66,7 @@ jobs:
         if: steps.rp.outputs.release_created == 'true'
         with:
           fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
 
       - name: Move the line tag
         if: steps.rp.outputs.release_created == 'true'
@@ -73,11 +88,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: write
+      contents: read
     steps:
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.FACTORY_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.FACTORY_RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
 
       - name: Move the line tag back
         env:

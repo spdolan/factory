@@ -101,13 +101,33 @@ Also turn on **Settings → Actions → General → Allow GitHub Actions to crea
 
 ### Protecting the factory
 
-Every consuming repository runs the factory's code with its own secrets, so protect the factory too. From inside the factory:
+Every consuming repository runs the factory's code with its own secrets, so protect the factory too. Rulesets need a public repository or GitHub Pro.
+
+The release workflow needs an actor that may create and move `v*` tags while everyone else, including you, may not. On a personal account that can't be the GitHub Actions app (the API refuses it as a bypass actor), so it is a GitHub App you own:
+
+1. GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App**. Name it `<something>-factory-release`; any homepage URL; untick **Webhook → Active**.
+2. **Repository permissions:** Contents: Read and write, Pull requests: Read and write (Metadata: Read is added). **Where can this GitHub App be installed:** Only on this account.
+3. Create it, then **Generate a private key** (a `.pem` download) and note the **Client ID** on the app's page. The slug is the last part of the app's settings URL.
+4. **Install App** → your account → only the factory.
+5. Put the two values on the factory, from anywhere:
+
+   ```bash
+   gh secret set FACTORY_RELEASE_APP_CLIENT_ID --repo <owner>/factory
+   ```
+
+   ```bash
+   gh secret set FACTORY_RELEASE_APP_PRIVATE_KEY --repo <owner>/factory < ~/Downloads/<the key>.pem
+   ```
+
+   Then delete the `.pem` file.
+
+Then, from inside the factory:
 
 ```bash
-scripts/factory protect
+scripts/factory protect --release-app <slug>
 ```
 
-It creates (or updates) two rulesets. On `main`, changes go only through a pull request, with no force pushes or deletion. On `v*` tags, only GitHub Actions (the release workflow) may create, move or delete them. There is no admin bypass, because local agent sessions run with your login. Never add the factory to `FACTORY_GITHUB_TOKEN`'s repositories, and never give it the `factory` topic.
+It creates (or updates) two rulesets. On `main`, changes go only through a pull request, with no force pushes or deletion. On `v*` tags, only that app may create, move or delete them; the release workflow mints a short-lived token from it for release-please and the tag push. Without `--release-app` the tag ruleset has no bypass at all and releases fail. There is no admin bypass, because local agent sessions run with your login. Never add the factory to `FACTORY_GITHUB_TOKEN`'s repositories, and never give it the `factory` topic.
 
 ## 3. Library releases
 
