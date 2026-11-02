@@ -116,7 +116,7 @@ Merging the release-please PR is the promotion. Until then, merged work runs onl
 
 ### 3. One commit per run, and a run that says what it ran
 
-- **One commit for the whole run.** The first job finds the commit of the workflow it was called at, `job_workflow_sha`, from the OIDC token or a workflow context (unverified). Every later job checks out the factory at that commit, and the stub doesn't repeat the ref.
+- **One commit for the whole run.** The first job finds the commit of the workflow it was called at, `job_workflow_sha`, from the OIDC token (tested; `github.workflow_sha` is the caller's commit, not the factory's). Every later job checks out the factory at that commit, and the stub doesn't repeat the ref.
 - **The setup action matches the workflow.** Each job starts with `uses: ./.factory/.github/actions/prepare`, a local path in that checkout, so the action is always the same version as the workflow.
 - **What ran is visible.** `prepare` writes the job summary: the commit and release, the resolved config and where each value came from, the flags that are on, and any pending update.
 - **Fetching the factory.** If the factory is public, checkout and tarball downloads are anonymous. If it is private, each consuming repository holds `FACTORY_READ_TOKEN`, read-only on the factory alone, used only by the checkout step and never given to the agent (§11).
