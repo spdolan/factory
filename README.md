@@ -108,6 +108,8 @@ cd ~/code/<project>
 ~/code/factory/scripts/install-factory.sh
 ```
 
+A proposal to replace per-repository reinstalls with reusable workflows, release channels and a fleet config is in [docs/rollout.md](docs/rollout.md).
+
 The installer copies the skills into `.claude/skills/` and the workflows into `.github/workflows/`, and creates `FACTORY.md`, `vision.md` and `bets.md` if they're missing. It records checksums in `.claude/factory.lock`, so a reinstall upgrades unchanged files and keeps files you or the improve-review loop changed (`--force` overwrites them). Other options:
 
 - `--with-novelty ~/code/novelty-audit/skills` vendors the full novelty-audit skills so the gate can use them in CI
