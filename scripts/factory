@@ -20,7 +20,7 @@
 #       (has the `factory` topic). OWNER defaults to your gh login. Values are piped to gh,
 #       never put on a command line, and nothing is written to disk.
 #
-#   factory protect [--repo OWNER/NAME] [--release-app SLUG]
+#   factory protect [--repo OWNER/NAME] [--release-app APP_ID]
 #       Run inside the factory. Creates or updates its rulesets: main changes only through
 #       a pull request (no force pushes or deletion), and only the release workflow's
 #       GitHub App (--release-app, or FACTORY_RELEASE_APP: its App ID from the app's
