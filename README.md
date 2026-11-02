@@ -143,7 +143,18 @@ The short path. [docs/setup.md](docs/setup.md) has the details and the manual eq
 
 Commit the installed files and merge. To take a factory change, run the installer again and merge the result.
 
-The factory names no other repository. Each repository declares itself with the `factory` topic, and `scripts/factory` finds repositories by it; there is no registry and no infra state. Protect the factory itself once, from inside it, with `scripts/factory protect` (rulesets on `main` and `v*` tags; they need a public repository or GitHub Pro).
+The factory names no other repository. Each repository declares itself with the `factory` topic, and `scripts/factory` finds repositories by it; there is no registry and no infra state. Protect the factory itself once, from inside it, with `scripts/factory protect` (rulesets on `main` and `v*` tags).
+
+### Keeping the factory private
+
+This factory is public: consumers fetch it anonymously and rulesets are free. The same pattern works with a private factory on a plan that allows it:
+
+- **Rulesets on a private repository** need GitHub Pro (personal account) or Team (organization). On Free they return 403, and nothing on the server then stops a release tag from being moved.
+- **Calling its reusable workflows** (0.2) needs Settings → Actions → General → Access set to the owner's repositories (`scripts/factory protect` sets it). An organization gets the same setting for its repositories and can make the factory `internal` instead of private.
+- **Fetching it in runs** needs `FACTORY_READ_TOKEN` (fine-grained, the factory only, Contents: read) on each consumer, set by `scripts/factory rotate-secrets` and renewed before it expires; `doctor` reports it. An organization can set it once as an organization secret scoped to the consumers, or use a GitHub App installation token instead of a personal token.
+- **Interactive sessions** fetch skills with your `gh` login instead of anonymously.
+
+The trade-offs are in [docs/rollout.md](docs/rollout.md#11-public-or-private).
 
 ## Layout
 
