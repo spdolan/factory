@@ -262,7 +262,7 @@ The factory is the most powerful repository you own, so:
   - Rulesets are free on a public repository; a private one needs GitHub Pro or higher (§11).
   - On `refs/tags/v*`: only GitHub Actions (the release workflow) may create, move or delete tags. There is no bypass for admins, because local sessions run with your login, which is an admin. Roll back through the workflow's `rollback` input.
 - **No agent token covers the factory.**
-- **Pull requests from forks** run only the factory's own CI, which uses no secrets and never `pull_request_target`.
+- **Pull requests from forks** run only the factory's own CI, which never uses `pull_request_target`. Its only secret, `FACTORY_PRIVATE_NAMES`, is empty on fork PRs, so that check is skipped for them and runs again on `main`.
 - **The `factory-local` deny list** blocks tag pushes. The self-hosted runner should run as a dedicated macOS user. Until it does, keep local sessions in repositories pinned to a release.
 
 ### 10. One command-line tool, scoped to the repository it runs in
@@ -279,7 +279,7 @@ The factory is the most powerful repository you own, so:
 
 ### 11. Public or private
 
-The design works either way. The factory names no other repository, so going public exposes no repository names in the current code; its history is another matter (decision 1 in the pilot notes).
+The design works either way. The factory names no other repository, so going public exposes no repository names in the current code; its history is another matter ([public-readiness.md](public-readiness.md)).
 
 | | Public | Private |
 |---|---|---|
@@ -344,4 +344,4 @@ Tested on 2026-11-02 with a throwaway reusable workflow in the private factory, 
 Still open:
 
 4. **Tag-ruleset bypass on a personal account.** Does the bypass for the GitHub Actions app work on a repository owned by a personal account? If not, the release workflow moves tags with a token that has Contents: write on the factory only, kept in the factory's secrets.
-6. **GitHub Pro.** Rulesets on a private factory need it. The pilot notes record the account as GitHub Free and plinth's `main` as unprotected for that reason. Either upgrade (which also lets plinth protect `main`) or make the factory public.
+6. **GitHub Pro.** Rulesets on a private factory need it. Checked 2026-11-02: the account is GitHub Free (`gh api repos/<owner>/factory/rulesets` answers 403, "Upgrade to GitHub Pro or make this repository public"), so today `factory protect` and `doctor --protect-default-branch --fix` fail on every private repository. Either upgrade (which also lets the other private repositories protect `main`) or make the factory public.

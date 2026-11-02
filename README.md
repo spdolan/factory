@@ -2,6 +2,12 @@
 
 A cloud software factory for small, pre-revenue projects. It is a set of Claude Code skills and GitHub Actions workflows that move work from a product bet to a reviewed pull request. Agents advance small, low-risk work on their own, and a human approves anything critical or complex.
 
+## Where it stands
+
+Today (0.1) the factory is copied into each repository: `scripts/install-factory.sh` puts the skills in `.claude/skills/` and the workflows in `.github/workflows/`, and `scripts/factory` sets each repository up (`doctor`, `rotate-secrets`) and protects the factory itself (`protect`). Every factory change still needs a reinstall and a PR in each repository.
+
+The next line (0.2) replaces the copies with reusable workflows that each repository calls at a release tag, new behavior behind opt-out flags, and update issues opened during normal runs. That design is in [docs/rollout.md](docs/rollout.md) (distribution, versions, flags, update issues), [docs/pipeline.md](docs/pipeline.md) (one configuration-driven stage runner) and [docs/architecture.md](docs/architecture.md) (diagrams). None of it is built yet.
+
 It is a port of [warpdotdev-demos/cloud-factory-demo](https://github.com/warpdotdev-demos/cloud-factory-demo) from Warp's Oz runtime to [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action). It adds a product layer (`bet`), a prior-art gate (`novelty-gate`), risk-based autonomy, model tiers chosen for cost, and automatic dependency bumps between repositories.
 
 ## Flow
@@ -87,7 +93,7 @@ Commits name the model that made them, for example `Co-Authored-By: Claude Haiku
 
 ## Workflows
 
-All of them run `anthropics/claude-code-action@v1.0.245`.
+They live in `templates/github/workflows/` and are copied into each repository. All of them run `anthropics/claude-code-action@v1.0.245`.
 
 | Workflow | Trigger |
 |---|---|
@@ -103,28 +109,52 @@ All of them run `anthropics/claude-code-action@v1.0.245`.
 
 ## Versions
 
-Releases come from [release-please](https://github.com/googleapis/release-please) and conventional PR titles, which a CI check enforces. Before 1.0, the minor number is the breaking-change number: `fix:` and `feat:` cut a patch release (new behavior ships behind a flag), and `feat!:` cuts the next minor line. Each release moves its line tag (`v0.1`, `v0.2`, …), which repositories will call once the reusable workflows land ([docs/rollout.md](docs/rollout.md) §2). Merge the open release PR to release. To roll back, dispatch the Release workflow with `rollback: v0.2.3`.
+Releases come from [release-please](https://github.com/googleapis/release-please) and conventional PR titles, which a CI check enforces. Before 1.0, the minor number is the breaking-change number: `fix:` and `feat:` cut a patch release (new behavior ships behind a flag), and `feat!:` cuts the next minor line. Each release moves its line tag (`v0.1`, `v0.2`, …), which repositories will call once the reusable workflows land ([docs/rollout.md](docs/rollout.md) §2). Nothing is released yet: merging the first release PR cuts 0.1.0, the installer-based factory. Merge the open release PR to release. To roll back, dispatch the Release workflow with `rollback: v0.2.3`.
 
-## Install into a repository
+## Set up a repository
 
-```bash
-cd ~/code/<project>
-~/code/factory/scripts/install-factory.sh
-```
+The short path. [docs/setup.md](docs/setup.md) has the details and the manual equivalents.
 
-A proposal to replace per-repository reinstalls with reusable workflows, versioned releases and opt-out feature flags is in [docs/rollout.md](docs/rollout.md) (diagrams in [docs/architecture.md](docs/architecture.md)), and a configuration-driven pipeline (stages, states, model tiers, runtimes) is in [docs/pipeline.md](docs/pipeline.md).
+1. **Install the files**, from the root of the repository:
 
-The installer copies the skills into `.claude/skills/` and the workflows into `.github/workflows/`, and creates `FACTORY.md`, `vision.md` and `bets.md` if they're missing. It records checksums in `.claude/factory.lock`, so a reinstall upgrades unchanged files and keeps files you or the improve-review loop changed (`--force` overwrites them). Other options:
+   ```bash
+   ~/code/factory/scripts/install-factory.sh
+   ```
 
-- `--with-skills DIR` also copies every skill under `DIR` (each subdirectory with a `SKILL.md`), for example the full novelty-audit skills so the novelty gate can use them in CI
-- `--create-labels` creates the labels with `gh` (`scripts/factory doctor --fix` does this too)
-- `--dry-run` shows what would change
+   The installer copies the skills into `.claude/skills/` and the workflows into `.github/workflows/`, and creates `FACTORY.md`, `vision.md` and `bets.md` if they're missing. It records checksums in `.claude/factory.lock`, so a reinstall upgrades unchanged files and keeps files you or the improve-review loop changed (`--force` overwrites them). `--with-skills DIR` also copies every skill under `DIR` (each subdirectory with a `SKILL.md`); `--dry-run` shows what would change.
+2. **Fill in `FACTORY.md`**: validation commands, protected paths, human-only areas, consumers, and how to start the app. Agents read it.
+3. **Create the tokens by hand**: a fine-grained `FACTORY_GITHUB_TOKEN` that covers the repositories the factory runs in (never the factory itself), and a Claude credential (`claude setup-token` or an API key). Steps in [docs/setup.md](docs/setup.md#1-create-the-tokens).
+4. **Declare the repository a consumer and fix its settings**, from inside it:
 
-Then:
+   ```bash
+   ~/code/factory/scripts/factory doctor --fix
+   ```
 
-1. Fill in `FACTORY.md`: validation commands, protected paths, human-only areas, consumers, and how to start the app.
-2. Set up credentials and settings by following [docs/setup.md](docs/setup.md). The fine-grained `FACTORY_GITHUB_TOKEN` is created by hand. Then `scripts/factory doctor --fix`, run inside the repository, declares it a consumer (the `factory` topic) and sets its labels and Actions settings, and `scripts/factory rotate-secrets` sets the secrets on every declared repository. The factory itself names none of them.
-3. If agents need toolchains or registry credentials, add `.github/factory/setup.sh` (it receives `GITHUB_PACKAGES_TOKEN`).
+   It adds the `factory` topic, creates missing labels, and sets Actions to a read-only default token that may create pull requests. Without `--fix` it only reports.
+5. **Set the secrets** on every repository with the topic, from anywhere:
+
+   ```bash
+   export FACTORY_GITHUB_TOKEN='…' CLAUDE_CODE_OAUTH_TOKEN='…'
+   ~/code/factory/scripts/factory rotate-secrets
+   ```
+
+   It pipes each exported value to `gh`, writes nothing to disk, and lists the repositories it set. To rotate a token, export the new value and run it again.
+6. **Optional:** repository variables for autonomy and models (`FACTORY_AUTONOMY`, `FACTORY_MODEL_*`, `FACTORY_EFFORT_*`), and `.github/factory/setup.sh` if agents need toolchains or registry credentials (it receives `GITHUB_PACKAGES_TOKEN`).
+
+Commit the installed files and merge. To take a factory change, run the installer again and merge the result.
+
+The factory names no other repository. Each repository declares itself with the `factory` topic, and `scripts/factory` finds repositories by it; there is no registry and no infra state. Protect the factory itself once, from inside it, with `scripts/factory protect` (rulesets on `main` and `v*` tags; they need a public repository or GitHub Pro).
+
+## Layout
+
+| Path | What |
+|---|---|
+| `skills/` | the Claude Code skills, one directory each |
+| `templates/github/workflows/` | the workflows the installer copies into a repository |
+| `templates/repo/` | `FACTORY.md`, `vision.md`, `bets.md` starting points |
+| `templates/labels.txt` | the labels `doctor --fix` and the installer create |
+| `scripts/` | `install-factory.sh`, `factory` (doctor, rotate-secrets, protect), `check-references.sh` (CI: no references to other repositories) |
+| `docs/` | setup, the local runner, and the 0.2 design (rollout, pipeline, architecture) |
 
 ## Using it locally
 
