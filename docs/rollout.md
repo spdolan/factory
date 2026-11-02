@@ -343,5 +343,8 @@ Tested on 2026-11-02 with a throwaway reusable workflow in the private factory, 
 
 Still open:
 
-4. **Tag-ruleset bypass on a personal account.** Does the bypass for the GitHub Actions app work on a repository owned by a personal account? If not, the release workflow moves tags with a token that has Contents: write on the factory only, kept in the factory's secrets.
+4. **Tag-ruleset bypass on a personal account: no.** Tested 2026-11-02 on the factory itself: the rulesets API rejects the GitHub Actions app as a bypass actor with "Actor GitHub Actions integration must be part of the ruleset source or owner organization". The tag ruleset exists without any bypass, which blocks every `v*` tag, including the ones release-please creates. Before the first release, pick one:
+   - **A GitHub App you own**, installed on the factory, as the bypass actor. The release workflow mints an installation token (`actions/create-github-app-token`) and gives it to release-please and the tag push. This also makes release PRs trigger CI, since they are no longer opened with `GITHUB_TOKEN`. Two secrets on the factory (app ID, private key); no agent runs in the factory's CI. Recommended.
+   - **A deploy key** with write access as the bypass actor, used only for the tag push. release-please's own tag creation still needs a bypass, so this alone is not enough.
+   - **A fine-grained PAT** needs the admin role as a bypass actor, which is the admin bypass the design rejects (local sessions run with your login).
 6. **GitHub Pro.** Rulesets on a private factory need it. Checked 2026-11-02: the account is GitHub Free (`gh api repos/<owner>/factory/rulesets` answers 403, "Upgrade to GitHub Pro or make this repository public"), so today `factory protect` and `doctor --protect-default-branch --fix` fail on every private repository. Either upgrade (which also lets the other private repositories protect `main`) or make the factory public.
