@@ -12,7 +12,7 @@ The current tree names no other repository (`scripts/check-references.sh` enforc
 |---|---|---|
 | **No secrets in history.** A pattern scan for GitHub and Anthropic token shapes over `git log -p --all` found nothing. Terraform state (which held secrets in plain text) was gitignored and never committed. Re-run the scan right before flipping: `git log -p --all \| grep -cE 'gh[pous]_[A-Za-z0-9]{30,}\|sk-ant-'` must print `0`. | whole history | must |
 | **Old `infra/live/`** (removed in `e3da1ca`) holds a Terragrunt file per repository with its name, autonomy, model and effort settings and a comment on why. `git show e3da1ca^:infra/live/` shows them. | history | must: decide |
-| **Commit messages name repositories and issues**, for example `spdolan/plinth#22`, `feat(infra): triage plinth and judicial_outcomes on Haiku`. About 15 commits. | history | must: decide |
+| **Commit messages name repositories and issues**, for example `<owner>/<library>#22` and `feat(infra): triage <two repositories> on Haiku`. About 15 commits. | history | must: decide |
 | **Your personal email on 4 early commits** (`b0aeb4d`, `9c27ea5`, `9477d59`, `822ec24`); the rest use the GitHub noreply address. | history | must: decide |
 | **11 stale remote branches** from merged PRs (`fix/local-*`, `feat/local-runner`, …). They add nothing the history doesn't already show, but they clutter the branch list. Delete them after confirming each PR is merged, and turn on "Automatically delete head branches". | branches, Settings → General | should |
 
@@ -53,8 +53,8 @@ Whichever it is, do it before the first release tag exists, because the tag rule
 
 | Item | File | Priority |
 |---|---|---|
-| **SECURITY.md**: how to report a problem privately (GitHub's private vulnerability reporting, Settings → Code security, is free on public repositories; turn it on), what is in scope (the workflows run with consumers' secrets), and that there is no bug bounty. | `SECURITY.md` | must |
-| **CONTRIBUTING.md**: conventional PR titles (the CI check explains the types), the no-references rule, how to run the lints locally (`shellcheck scripts/*.sh scripts/factory`, `actionlint`, `scripts/check-references.sh`), and that fork PRs run only the linters. Keep it short. | `CONTRIBUTING.md` | should |
+| **SECURITY.md**: how to report a problem privately (GitHub's private vulnerability reporting, Settings → Code security, is free on public repositories; turn it on), what is in scope (the workflows run with consumers' secrets), and that there is no bug bounty. | `SECURITY.md` | done |
+| **CONTRIBUTING.md**: conventional PR titles (the CI check explains the types), the no-references rule, how to run the lints locally (`shellcheck scripts/*.sh scripts/factory`, `actionlint`, `scripts/check-references.sh`), and that fork PRs run only the linters. Keep it short. | `CONTRIBUTING.md` | done |
 | **Issue and PR templates**: one issue template is enough. A PR template that reminds about the title class (`fix` / `feat` behind a flag / `feat!` with a `MIGRATION.md` entry). | `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md` | nice |
 | **CODEOWNERS**: `* @<owner>` so review requests go to you, and so a future "require code owner review" rule has something to point at. | `.github/CODEOWNERS` | nice |
 | **CHANGELOG.md**: release-please creates it on the first release; nothing to do unless you want a hand-written entry for 0.1.0. | `CHANGELOG.md` | — |
@@ -67,7 +67,7 @@ Public means strangers can open PRs. Today's CI is already fork-safe, but it nee
 
 | Item | File / setting | Priority |
 |---|---|---|
-| `ci.yml` and `pr-title.yml` run on `pull_request`, not `pull_request_target`, with no write permissions (`pr-title.yml` has `permissions: {}`; `ci.yml` inherits the repository default, which is read-only). Keep it that way; add `permissions: contents: read` to `ci.yml` so it doesn't depend on the repository setting. | `.github/workflows/ci.yml` | should |
+| `ci.yml` and `pr-title.yml` run on `pull_request`, not `pull_request_target`, with no write permissions (`pr-title.yml` has `permissions: {}`; `ci.yml` inherits the repository default, which is read-only). Keep it that way; `ci.yml` sets `permissions: contents: read` so it doesn't depend on the repository setting. | `.github/workflows/ci.yml` | done |
 | The no-references check reads `secrets.FACTORY_PRIVATE_NAMES`, which is empty on fork PRs, so a fork PR could add a private name that only the post-merge run on `main` catches. Acceptable; say so in `CONTRIBUTING.md`. | `scripts/check-references.sh`, `CONTRIBUTING.md` | nice |
 | **Require approval for first-time contributors** (Settings → Actions → General → Fork pull request workflows) so CI minutes aren't spent on drive-by PRs. The default for public repositories is "first-time contributors", which is fine; confirm it. | Settings → Actions | must: check |
 | `release.yml` runs on `push` to `main` only and the `rollback` input is `workflow_dispatch` only; forks can't reach either. | — | — |

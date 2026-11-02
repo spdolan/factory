@@ -186,6 +186,10 @@ The skills are ordinary Claude Code skills:
 - **Verification.** Screenshots through Playwright MCP or gstack instead of Oz computer-use video. It is opt-in, for repositories with a UI.
 - **Self-declared consumers.** Each repository marks itself with the `factory` topic; `scripts/factory` finds repositories by it to set secrets, and checks and fixes each one's labels, Actions settings and rulesets. No infra state, and the factory lists no repositories.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) (conventional PR titles, the no-references rule, the local checks) and [SECURITY.md](SECURITY.md) for reporting problems privately.
+
 ## License
 
 MIT. Derived from MIT-licensed work by Warp and Denver Technologies, Inc.; see [NOTICE.md](NOTICE.md).
