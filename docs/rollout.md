@@ -290,7 +290,7 @@ The design works either way. The factory names no other repository, so going pub
 | Dependabot bumps of pinned versions | works | unverified |
 | Who sees prompts and workflows, who can open PRs | anyone; forks run only the factory's CI | only you |
 
-Two checks settle it: whether private reusable-workflow sharing works on a personal account (open question 5), and whether the account has GitHub Pro (open question 6). If both hold, private costs one more token. If either fails, public is simpler.
+Two checks settle it. Private reusable-workflow sharing works on a personal account (open question 5, tested). That leaves GitHub Pro (open question 6): with it, private costs one more token; without it, public is simpler, or upgrading also lets other private repositories protect `main`.
 
 ## Credentials
 
@@ -329,13 +329,19 @@ Two checks settle it: whether private reusable-workflow sharing works on a perso
 3. Move each repository's settings from its repository variables into its `config.yml`.
 4. Delete `templates/github/workflows/` and the installer's copy mode.
 
-## Open questions to prove in phase 1
+## Open questions
 
-None of these could be checked against GitHub's documentation while this was written. Each has a fallback.
+Tested on 2026-11-02 with a throwaway reusable workflow in the private factory, called from a private consuming repository on the same personal account:
 
-1. **Called workflows and caller variables.** Do `vars` in a called workflow resolve to the caller's repository variables? If not, the stub passes the kill-switch variables as inputs.
-2. **Finding the called workflow's commit.** Is `job_workflow_sha` available as a context, or only in the OIDC token? If neither works, the stub passes the ref as an input, and the first job resolves it once.
-3. **Check names.** Called jobs appear as `<stub job> / <called job name>`. Any required check has to be renamed once.
+| Question | Result |
+|---|---|
+| 1. Do `vars` in a called workflow resolve to the caller's repository variables? | **Yes.** The called workflow read the caller's `FACTORY_VERIFY` and `FACTORY_LOCAL_SETTING_SOURCES`. |
+| 2. Can a run find the commit of the workflow it was called at? | **Yes, from the OIDC token** (`job_workflow_sha`, with `id-token: write` in the stub). `github.workflow_sha` is the caller's commit, not the factory's. |
+| 3. Check names | **`<stub job> / <called job name>`**, for example `call / Probe`. Any required check has to be renamed once. |
+| 5. Can a personal account's private repositories call a private factory's reusable workflows? | **Yes, once the factory's Settings → Actions → General → Access allows repositories owned by the user** (`factory protect` sets it). Before that, the call fails at startup. |
+| Can the caller's `GITHUB_TOKEN` check out a private factory? | **No** ("Repository not found"), so a private factory needs `FACTORY_READ_TOKEN`. |
+
+Still open:
+
 4. **Tag-ruleset bypass on a personal account.** Does the bypass for the GitHub Actions app work on a repository owned by a personal account? If not, the release workflow moves tags with a token that has Contents: write on the factory only, kept in the factory's secrets.
-5. **Private reusable workflows on a personal account.** Can the owner's other private repositories call a private factory's reusable workflows once its Access setting allows them? Being tested from groundwork. If not, the factory goes public.
-6. **GitHub Pro.** Rulesets on a private factory need it. If the account doesn't have it, either go public or accept the local deny list as the only guard on tags.
+6. **GitHub Pro.** Rulesets on a private factory need it. The pilot notes record the account as GitHub Free and plinth's `main` as unprotected for that reason. Either upgrade (which also lets plinth protect `main`) or make the factory public.
