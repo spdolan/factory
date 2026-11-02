@@ -107,7 +107,7 @@ cmd_doctor() {
   fixed() { printf 'fixed    %s\n' "$*"; }
 
   # The consumer declaration.
-  if gh repo view "$repo" --json repositoryTopics -q '.repositoryTopics[].name' | grep -qx "$TOPIC"; then
+  if gh repo view "$repo" --json repositoryTopics -q '.repositoryTopics // [] | .[].name' | grep -qx "$TOPIC"; then
     ok "declares itself a consumer (topic '$TOPIC')"
   elif [ "$fix" = true ]; then
     gh repo edit "$repo" --add-topic "$TOPIC" >/dev/null && fixed "added topic '$TOPIC'"
