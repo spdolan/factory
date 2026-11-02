@@ -78,7 +78,7 @@ flowchart TD
 
   W3 --> MERGE["you merge"]
 
-  P1 -. "newer release line or<br/>undecided flag, no open<br/>update issue" .-> UPD["factory:update issue"]
+  P1 -.->|"newer release line or<br/>undecided flag, no open<br/>update issue"| UPD["factory:update issue"]
   UPD --> P4
   subgraph U["update run, on the current version"]
     P4["plan"] --> A4["agent<br/>config.yml and FACTORY.md<br/>per MIGRATION.md"] --> W4["apply<br/>renders new stubs · opens PR"]
