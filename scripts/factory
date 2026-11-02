@@ -20,12 +20,16 @@
 #       (has the `factory` topic). OWNER defaults to your gh login. Values are piped to gh,
 #       never put on a command line, and nothing is written to disk.
 #
-#   factory protect [--repo OWNER/NAME]
+#   factory protect [--repo OWNER/NAME] [--release-app SLUG]
 #       Run inside the factory. Creates or updates its rulesets: main changes only through
-#       a pull request (no force pushes or deletion), and only GitHub Actions (the release
-#       workflow) may create, move or delete v* tags. No admin bypass: local agent sessions
-#       run with your login. While the factory is private it also sets Actions access so
-#       your other repositories may call its reusable workflows.
+#       a pull request (no force pushes or deletion), and only the release workflow's
+#       GitHub App (--release-app, or FACTORY_RELEASE_APP; the app's slug from its URL) may
+#       create, move or delete v* tags. Without an app the tag ruleset has no bypass at all
+#       and releases fail until one is added. No admin bypass: local agent sessions run
+#       with your login, and GitHub refuses the Actions app as a bypass actor on a personal
+#       account. While the factory is private it also sets Actions access so your other
+#       repositories may call its reusable workflows. Rulesets need a public repository or
+#       GitHub Pro.
 #
 # Consumers are found by what they declare about themselves, so the factory never lists
 # them. The declaration is a repository topic, FACTORY_TOPIC (default `factory`).
@@ -37,9 +41,9 @@ TOPIC="${FACTORY_TOPIC:-factory}"
 SECRETS=(FACTORY_GITHUB_TOKEN CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FACTORY_READ_TOKEN)
 BRANCH_RULESET="factory: protect default branch"
 TAG_RULESET="factory: protect release tags"
-GITHUB_ACTIONS_APP_ID=15368
+RELEASE_APP="${FACTORY_RELEASE_APP:-}"
 
-usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 die() { echo "factory: $*" >&2; exit 1; }
 need_gh() { command -v gh >/dev/null || die "needs the GitHub CLI (gh)"; gh auth status >/dev/null 2>&1 || die "run 'gh auth login' first"; }
 this_repo() { gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || die "run this inside a GitHub repository clone"; }
@@ -48,7 +52,11 @@ factory_repo() { git -C "$FACTORY_DIR" remote get-url origin 2>/dev/null | sed -
 # visibility REPO: PUBLIC, PRIVATE or INTERNAL; empty if it can't be read.
 visibility() { gh repo view "$1" --json visibility -q .visibility 2>/dev/null || true; }
 
-# ruleset_body KIND: the JSON for a ruleset (KIND = branch | tags).
+# app_id SLUG: the numeric id of a GitHub App, from its public listing.
+app_id() { gh api "apps/$1" --jq .id 2>/dev/null || die "no GitHub App '$1' (the slug is the last part of its settings URL)"; }
+
+# ruleset_body KIND: the JSON for a ruleset (KIND = branch | tags). The tag ruleset's
+# bypass list holds the release app when RELEASE_APP is set, else nothing.
 ruleset_body() {
   case "$1" in
     branch) cat <<JSON
@@ -60,11 +68,14 @@ ruleset_body() {
  "bypass_actors":[]}
 JSON
     ;;
-    tags) cat <<JSON
+    tags)
+      local bypass="[]"
+      [ -z "$RELEASE_APP" ] || bypass="[{\"actor_id\":$(app_id "$RELEASE_APP"),\"actor_type\":\"Integration\",\"bypass_mode\":\"always\"}]"
+      cat <<JSON
 {"name":"$TAG_RULESET","target":"tag","enforcement":"active",
  "conditions":{"ref_name":{"include":["refs/tags/v*"],"exclude":[]}},
  "rules":[{"type":"creation"},{"type":"update"},{"type":"deletion"},{"type":"non_fast_forward"}],
- "bypass_actors":[{"actor_id":$GITHUB_ACTIONS_APP_ID,"actor_type":"Integration","bypass_mode":"always"}]}
+ "bypass_actors":$bypass}
 JSON
     ;;
   esac
@@ -73,15 +84,22 @@ JSON
 # ruleset_id REPO NAME: the id of the ruleset with that name, or nothing.
 ruleset_id() { gh api "repos/$1/rulesets" --jq ".[] | select(.name == \"$2\") | .id" 2>/dev/null | head -1; }
 
+# rulesets_available REPO: rulesets need a public repository or GitHub Pro; say so instead of a raw 403.
+rulesets_available() {
+  gh api "repos/$1/rulesets" >/dev/null 2>&1 && return 0
+  die "can't read rulesets on $1: they need a public repository or GitHub Pro or higher"
+}
+
 # put_ruleset REPO KIND NAME: create the ruleset, or update it in place.
 put_ruleset() {
-  local repo="$1" kind="$2" name="$3" id
+  local repo="$1" kind="$2" name="$3" id body
+  body="$(ruleset_body "$kind")"
   id="$(ruleset_id "$repo" "$name")"
   if [ -n "$id" ]; then
-    ruleset_body "$kind" | gh api -X PUT "repos/$repo/rulesets/$id" --input - >/dev/null
+    printf '%s' "$body" | gh api -X PUT "repos/$repo/rulesets/$id" --input - >/dev/null
     echo "updated ruleset '$name' on $repo"
   else
-    ruleset_body "$kind" | gh api -X POST "repos/$repo/rulesets" --input - >/dev/null
+    printf '%s' "$body" | gh api -X POST "repos/$repo/rulesets" --input - >/dev/null
     echo "created ruleset '$name' on $repo"
   fi
 }
@@ -175,6 +193,7 @@ cmd_doctor() {
 
   # Default-branch ruleset, when asked for.
   if [ "$protect" = true ]; then
+    rulesets_available "$repo"
     if [ -n "$(ruleset_id "$repo" "$BRANCH_RULESET")" ]; then
       ok "ruleset '$BRANCH_RULESET'"
     elif [ "$fix" = true ]; then
@@ -240,6 +259,7 @@ cmd_protect() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --repo) repo="${2:?--repo needs OWNER/NAME}"; shift ;;
+      --release-app) RELEASE_APP="${2:?--release-app needs the app slug}"; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "protect: unknown option $1" ;;
     esac
@@ -247,8 +267,14 @@ cmd_protect() {
   done
   need_gh
   [ -n "$repo" ] || repo="$(this_repo)"
+  rulesets_available "$repo"
   put_ruleset "$repo" branch "$BRANCH_RULESET"
   put_ruleset "$repo" tags "$TAG_RULESET"
+  if [ -n "$RELEASE_APP" ]; then
+    echo "only the GitHub App '$RELEASE_APP' may create, move or delete v* tags"
+  else
+    echo "no --release-app: nothing may create, move or delete v* tags, so releases fail until you run protect again with the app" >&2
+  fi
   if [ "$(visibility "$repo")" != PUBLIC ]; then
     # Private: let the owner's other repositories call its reusable workflows.
     if gh api -X PUT "repos/$repo/actions/permissions/access" -f access_level=user >/dev/null 2>&1; then
