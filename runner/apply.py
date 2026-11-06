@@ -14,6 +14,7 @@ FACTORY_GITHUB_TOKEN when set, so pushed branches, PRs and dispatched runs trigg
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -86,6 +87,25 @@ def consumers(factory_md: str) -> list[str]:
     return out
 
 
+def free_branch(branch: str, taken: set, run_id: str) -> str:
+    """The agent's branch name, or a fresh one when a branch of that name already exists on the remote
+    (an earlier run's): apply never force-pushes over it."""
+    if branch not in taken:
+        return branch
+    for suffix in [f"-run{run_id}"] + [f"-run{run_id}-{i}" for i in range(2, 10)]:
+        if branch + suffix not in taken:
+            return branch + suffix
+    raise FactoryError(f"no free branch name near {branch}")
+
+
+def remote_branches(git: list, url: str, branch: str) -> set:  # pragma: no cover - IO
+    proc = subprocess.run([*git, "ls-remote", "--heads", url, f"refs/heads/{branch}*"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise FactoryError(f"can't list branches: {proc.stderr.strip()[-300:]}")
+    out = proc.stdout
+    return {line.split("refs/heads/", 1)[1] for line in out.splitlines() if "refs/heads/" in line}
+
+
 # --- operations -------------------------------------------------------------------------------
 
 class Apply:
@@ -103,7 +123,14 @@ class Apply:
         self.item = int(plan["item"]) if plan.get("item") else None
         self.route = None
         self.pr_url = ""
+        self.notes: list[str] = []
+        self.pushed = ""
         self.dispatches: list[tuple[str, int]] = []
+
+    def redact(self, text: str) -> str:
+        for secret in {self.write_token, os.environ.get("GH_TOKEN"), os.environ.get("FACTORY_GITHUB_TOKEN")} - {None, ""}:
+            text = text.replace(secret, "***")
+        return text
 
     def labels(self) -> list:
         return self.t.get(self.item)["labels"] if self.item else []
@@ -159,6 +186,8 @@ class Apply:
             body = self.result.get("comment", "").strip()
             if self.pr_url:
                 body += f"\n\n**PR:** {self.pr_url}"
+            for note in self.notes:
+                body += f"\n\n_{note}_"
             body += f"\n\n_[Run]({self.run_url})_\n"
         if not self.item:
             print(body)
@@ -186,14 +215,34 @@ class Apply:
         problems = patch_problems(files, self.plan["output"].get("paths"))
         if problems:
             raise FactoryError("refusing the patch:\n  " + "\n  ".join(problems))
-        url = f"https://x-access-token:{self.write_token}@{self.server.removeprefix('https://')}/{self.repo}.git"
-        subprocess.run(["git", "push", "--quiet", url, f"refs/factory/patch:refs/heads/{branch}"], check=True)
+        # The token goes in a header, never the URL, so no error message can carry it.
+        url = f"{self.server}/{self.repo}.git"
+        auth = base64.b64encode(f"x-access-token:{self.write_token}".encode()).decode()
+        git = ["git", "-c", f"http.{self.server}/.extraheader=AUTHORIZATION: basic {auth}"]
+        branch = free_branch(branch, remote_branches(git, url, branch), os.environ.get("GITHUB_RUN_ID", "0"))
+        push = subprocess.run([*git, "push", "--quiet", url, f"refs/factory/patch:refs/heads/{branch}"],
+                              capture_output=True, text=True)
+        if push.returncode != 0:
+            raise FactoryError(f"git push {branch} failed: {push.stderr.strip()[-500:]}")
+        self.pushed = branch
         args = ["pr", "create", "--repo", self.repo, "--head", branch, "--base", default, "--title", r["pr_title"],
                 "--body-file", self.comment_file(r["pr_body"])]
         if r.get("draft"):
             args.append("--draft")
-        self.pr_url = gh(*args, token=self.write_token).strip().splitlines()[-1]
-        print(f"opened {self.pr_url}")
+        try:
+            out = gh(*args, token=self.write_token)
+        except FactoryError as exc:
+            # A FACTORY_GITHUB_TOKEN without Pull requests: write can push but not open the PR. The job's
+            # own token can (the stub grants pull-requests: write), but PRs it opens don't start CI or review.
+            if self.write_token == os.environ.get("GH_TOKEN") or "not accessible" not in str(exc):
+                raise
+            out = gh(*args)
+            self.notes.append(f"The PR was opened with the run's GITHUB_TOKEN because FACTORY_GITHUB_TOKEN can't open "
+                              f"pull requests in {self.repo} (it needs Pull requests: read and write). CI and review "
+                              "won't start on it until the next push.")
+            print(f"::warning::{self.notes[-1]}")
+        self.pr_url = out.strip().splitlines()[-1]
+        print(f"opened {self.pr_url} from {branch}")
 
     # review
     def op_publish_review(self):
@@ -271,9 +320,19 @@ class Apply:
             print(f"updated update issue #{n}")
 
     def run(self):
-        for op in self.plan["apply"]:
+        ops = self.plan["apply"]
+        for i, op in enumerate(ops):
             print(f"== {op}")
-            getattr(self, "op_" + op.replace("-", "_"))()
+            try:
+                getattr(self, "op_" + op.replace("-", "_"))()
+            except (FactoryError, subprocess.CalledProcessError) as exc:
+                # Still tell the item what happened when a later operation would have reported on it.
+                if "comment" in ops[i + 1:] and self.item:
+                    self.notes.append(f"The factory couldn't finish `{op}`: {self.redact(str(exc)).splitlines()[0][:300]}"
+                                      + (f" The commits are on `{self.pushed}`." if self.pushed else ""))
+                    print("== comment (after the failure)")
+                    self.op_comment()
+                raise
         for stage, n in self.dispatches:
             self.dispatch(stage, n)
 
