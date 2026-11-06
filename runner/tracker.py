@@ -92,7 +92,7 @@ def _edit_labels(n: int, add=(), remove=()) -> None:
 
 def get(n: int) -> dict:
     data = _json("issue", "view", str(n), "--json",
-                 "number,title,body,url,author,authorAssociation,labels,comments")
+                 "number,title,body,url,author,labels,comments")
     names = _names(data)
     return {
         "number": data["number"],
@@ -100,7 +100,6 @@ def get(n: int) -> dict:
         "body": data.get("body") or "",
         "url": data["url"],
         "author": (data.get("author") or {}).get("login"),
-        "author_association": data.get("authorAssociation"),
         "labels": names,
         "state": next((s for s in STATES if s in names), None),
         "markers": [m for m in MARKERS if m in names],

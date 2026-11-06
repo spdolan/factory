@@ -111,7 +111,7 @@ class TrackerTest(unittest.TestCase):
 
     def test_get_derives_state_markers_and_gate(self):
         self.view("ready-to-spec", "invariant-risk", "factory:agent", "maintenance",
-                  author={"login": "sean"}, authorAssociation="OWNER",
+                  author={"login": "sean"},
                   comments=[{"author": {"login": "bot"}, "body": "hi", "createdAt": "2026-01-01T00:00:00Z"}])
         item = tracker.get(5)
         self.assertEqual(item["state"], "ready-to-spec")
@@ -119,7 +119,6 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual(item["gate"], "agent")
         self.assertEqual(item["labels"], ["ready-to-spec", "invariant-risk", "factory:agent", "maintenance"])
         self.assertEqual(item["author"], "sean")
-        self.assertEqual(item["author_association"], "OWNER")
         self.assertEqual(item["comments"], [{"author": "bot", "body": "hi", "created_at": "2026-01-01T00:00:00Z"}])
 
     def test_get_with_no_state_or_gate(self):
