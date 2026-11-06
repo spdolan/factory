@@ -1,0 +1,83 @@
+{
+  "agent": null,
+  "apply": [
+    "open-breaking-issue"
+  ],
+  "autonomy": {
+    "never_if": [
+      "invariant-risk"
+    ],
+    "next_stage": {
+      "ready-to-implement": "implement",
+      "ready-to-spec": "spec"
+    },
+    "policy": "standard",
+    "rules": [
+      {
+        "size": [
+          "small"
+        ],
+        "state": "ready-to-implement"
+      },
+      {
+        "size": [
+          "small"
+        ],
+        "state": "ready-to-spec"
+      }
+    ]
+  },
+  "claude_args": "",
+  "conditions": [
+    "breaking"
+  ],
+  "dry_run": false,
+  "factory": {
+    "ref": "refs/tags/v0.2",
+    "release": "v0.2.0",
+    "repo": "acme/factory",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "flag_sources": {
+    "spec-auto-advance": "config.yml features.off"
+  },
+  "flags": {
+    "spec-auto-advance": false
+  },
+  "item": "",
+  "item_kind": "none",
+  "output": {
+    "kind": "none",
+    "states": []
+  },
+  "params": {
+    "breaking": "true",
+    "package": "@acme/lib",
+    "release_url": "https://github.com/acme/lib/releases/tag/ts-v1.0.0",
+    "source_repo": "acme/lib",
+    "tag": "ts-v1.0.0",
+    "version": "1.0.0"
+  },
+  "prompt": "",
+  "reason": "dispatch",
+  "run": true,
+  "runtime": "actions",
+  "settle_seconds": 0,
+  "sources": {
+    "agent.effort": "pipeline.yaml",
+    "agent.tier": "pipeline.yaml",
+    "autonomy": "factory default",
+    "runtime": "pipeline.yaml",
+    "verify": "factory default"
+  },
+  "stage": "dependency-bump",
+  "timeout": 30,
+  "trigger": "dispatch",
+  "update": {
+    "body": "",
+    "current": "v0.2",
+    "needed": false,
+    "newer_line": null,
+    "pending": []
+  }
+}

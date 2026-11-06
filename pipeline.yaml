@@ -1,0 +1,259 @@
+# The factory's process as data (docs/pipeline.md). It names no repository.
+#
+# runner/plan.py reads this file from the pinned factory commit, together with a
+# repository's .github/factory/config.yml (read from its default branch) and its
+# Actions variables, and resolves one stage into a plan: whether to run, the model,
+# tools, prompt, runtime, flags and what the apply job may do. `factory install`
+# renders each repository's stubs from `stages.*.triggers`, `concurrency` and `permissions`.
+#
+# Repositories override parameters (tiers, effort, autonomy, runtime, enabled), never
+# structure. Conditions (`when:`), apply operations and runtimes are a closed set in
+# runner/plan.py; adding one there is a code change, everything else is a change here.
+
+version: 1
+
+tiers:                         # the only place model IDs appear
+  fast: claude-haiku-5-5
+  balanced: claude-sonnet-5-5
+  deep: claude-opus-5-5
+
+tool_profiles:                 # expanded into --allowedTools; a stage may also list a literal tool
+  read: [Read, Glob, Grep]
+  tracker-read: ["Bash(factory tracker get:*)", "Bash(factory tracker related:*)", "Bash(factory tracker list:*)"]
+  git-read: ["Bash(git log:*)", "Bash(git show:*)"]
+  edit: [Edit, Write]
+  shell: [Bash]
+  web: [WebSearch, WebFetch]
+  agents: [Task, TodoWrite, Skill]
+  browser:                     # attached only when verification is on (FACTORY_VERIFY, config `verify`)
+    tools: [mcp__playwright]
+    mcp: verify-behavior/playwright-mcp.json   # under .claude/skills/
+    local: gstack-browse                       # the local runtime uses the session's own /browse
+
+# Labels, by role. Each name is a label on GitHub (templates/labels.txt has colors).
+states: [ready-to-spec, ready-to-implement, needs-info, wait-to-implement, spec-ready-for-review]
+markers: [invariant-risk]      # risk labels the pipeline reads
+gate:                          # who advances an item
+  awaiting: factory:awaiting-approval
+  approved: factory:approved
+  agent: factory:agent
+kinds:                         # labels that say what an item is
+  maintenance: maintenance
+  proposed: factory:proposed
+  update: factory:update
+runtime_labels:                # a label on an item that picks its runtime
+  factory:local: local
+
+autonomy:                      # who advances an issue after triage; config.yml `autonomy` picks the policy
+  default: standard
+  policies:
+    standard:
+      - { state: ready-to-implement, size: [small] }
+      - { state: ready-to-spec, size: [small] }
+      - { state: ready-to-spec, size: [medium], feature: spec-auto-advance }
+    small:
+      - { state: [ready-to-implement, ready-to-spec], size: [small] }
+    "off": []
+  never_if: [invariant-risk]   # markers that always send an item to a human
+
+defaults:                      # factory defaults for config.yml keys (rollout.md §5)
+  verify: false                # attach the browser profile to implement
+  updates:
+    check: true                # open or update the factory:update issue
+    advance: human
+  runtimes:
+    local:
+      setting_sources: project,local
+      work_dir: ""             # empty: ~/factory-work
+
+# Repository Actions variables: the highest precedence, and the kill switch agents
+# can't change. Each maps to a config.yml key. Model variables accept a tier name or
+# a model ID. FACTORY_MODEL_<STAGE> and FACTORY_EFFORT_<STAGE> work for every stage
+# (stage name upper-cased, dashes as underscores); the ones below are the 0.1 names.
+variables:
+  FACTORY_AUTONOMY: autonomy
+  FACTORY_VERIFY: verify
+  FACTORY_UPDATES_CHECK: updates.check
+  FACTORY_FEATURES_OFF: features.off           # comma-separated
+  FACTORY_FEATURES_ON: features.on
+  FACTORY_LOCAL_SETTING_SOURCES: runtimes.local.setting_sources
+  FACTORY_WORK_DIR: runtimes.local.work_dir
+  FACTORY_REVIEW_SMALL_LINES: stages.review.small_change_lines
+  FACTORY_MODEL_IMPLEMENT_AGENT: stages.implement.when.autonomous.model
+  FACTORY_MODEL_REVIEW_SMALL: stages.review.when.small_change.model
+  FACTORY_MODEL_RISK: "stages.*.when.risk.model"
+  FACTORY_MODEL_BET: stages.bet-intake.model
+  FACTORY_EFFORT_BET: stages.bet-intake.effort
+  FACTORY_MODEL_IMPROVE: stages.improve-review.model
+  FACTORY_EFFORT_IMPROVE: stages.improve-review.effort
+  FACTORY_MODEL_BUMP: stages.dependency-bump.model
+  FACTORY_EFFORT_BUMP: stages.dependency-bump.effort
+
+# Permissions every stub grants, so the read-only plan and agent jobs, which declare
+# their own, fit under any stub's ceiling. The apply job declares none: it gets
+# exactly its stub's ceiling.
+permissions_base:
+  contents: read
+  issues: write                # the factory:update issue, from any stage's apply job
+  pull-requests: read
+  packages: read               # GitHub Packages for .github/factory/setup.sh
+  id-token: write              # only to read the called workflow's own commit (rollout.md §3)
+
+# Each stage:
+#   item:        issue | pr | none: what the stage works on
+#   triggers:    when it runs. event: item.opened | item.labeled | pr.changed | dispatch |
+#                schedule | repository_dispatch | call. A trigger may name `requires`
+#                (a state the item must have) and `runtime`.
+#   requires_state: dispatch fails unless the item has it
+#   agent:       tier, effort, tools (profiles or literal tools), max_turns, setup (run
+#                .github/factory/setup.sh first), bun (use FACTORY_BUN_PATH)
+#   when:        overrides applied in order, later wins: autonomous (item has gate.agent),
+#                risk (item has a never_if marker), small_change (PR at most
+#                small_change_lines changed lines, no markers), breaking (params.breaking)
+#   output:      structured (schema) | file | patch | none
+#   apply:       the apply job's operations, in order; only these may write
+#   timeout:     minutes for the agent job (the apply job gets 10)
+#   concurrency: rendered into the stub; `key` is an expression for the group suffix
+#   permissions: what the stub adds to permissions_base
+stages:
+  triage:
+    summary: Decide an issue's state, size and risk, and who advances it.
+    item: issue
+    triggers:
+      - { event: item.opened, authors: [OWNER, MEMBER, COLLABORATOR], all_authors_variable: FACTORY_TRIAGE_ALL }
+      - { event: dispatch }
+    skill: triage
+    agent: { tier: fast, effort: medium, tools: [read, tracker-read, git-read], max_turns: 25 }
+    output: { kind: structured, schema: stages/triage/schema.json, states: [ready-to-implement, ready-to-spec, needs-info, wait-to-implement] }
+    apply: [set-state, add-markers, route, comment]
+    timeout: 15
+    concurrency: { key: "inputs.issue_number || github.event.issue.number", cancel: true }
+    permissions: { actions: write }          # route dispatches the next stage
+
+  spec:
+    summary: Novelty gate, then PRODUCT.md and TECH.md in a specs PR.
+    item: issue
+    triggers:
+      - { event: item.labeled, label: ready-to-spec }
+      - { event: item.labeled, label: factory:approved, requires: ready-to-spec }
+      - { event: item.labeled, label: factory:local, requires: ready-to-spec, runtime: local }
+      - { event: dispatch }
+    requires_state: ready-to-spec
+    gated: true
+    skill: spec
+    runtime: actions
+    agent: { tier: balanced, effort: medium, tools: [shell, read, edit, web, agents], max_turns: 60 }
+    when:
+      risk: { tier: deep, effort: high }
+    output: { kind: patch, states: [spec-ready-for-review, wait-to-implement] }
+    apply: [open-pr, set-state, comment]
+    timeout: 40
+    concurrency: { key: "inputs.issue_number || github.event.issue.number", cancel: false }
+    permissions: { contents: write, pull-requests: write }
+
+  implement:
+    summary: Implement an issue and open a PR.
+    item: issue
+    triggers:
+      - { event: item.labeled, label: ready-to-implement }
+      - { event: item.labeled, label: factory:approved, requires: ready-to-implement }
+      - { event: item.labeled, label: factory:local, requires: ready-to-implement, runtime: local }
+      - { event: dispatch }
+    requires_state: ready-to-implement
+    gated: true
+    skill: implementation
+    runtime: actions
+    agent: { tier: balanced, effort: medium, tools: [shell, read, edit, web, agents, browser], max_turns: 80, setup: true, bun: true }
+    when:
+      autonomous: { tier: fast }
+      risk: { tier: deep, effort: high }
+    output: { kind: patch, states: [], artifacts: [verification] }
+    apply: [open-pr, comment]
+    timeout: 45
+    concurrency: { key: "inputs.issue_number || github.event.issue.number", cancel: false }
+    permissions: { contents: write, pull-requests: write }
+
+  review:
+    summary: Review a PR from the trusted base and post the review.
+    item: pr
+    triggers:
+      - { event: pr.changed, types: [opened, synchronize, reopened, ready_for_review], settle_seconds: 60 }
+      - { event: dispatch }
+    eligible: { open: true, draft: false, skip_head_prefixes: [release-please--] }
+    skill: review-pr
+    agent: { tier: balanced, effort: medium, tools: [read, Write, "Bash(python3 .claude/skills/review-pr/scripts/validate_review_json.py:*)"], max_turns: 40 }
+    small_change_lines: 400
+    when:
+      small_change: { tier: fast }
+    output: { kind: file, file: review.json }
+    apply: [publish-review]
+    timeout: 30
+    concurrency: { key: "inputs.pr_number || github.event.pull_request.number", cancel: true }
+    permissions: { pull-requests: write }
+
+  bet-intake:
+    summary: Draft up to 3 issues that move an open bet, then triage them.
+    item: none
+    triggers:
+      - { event: dispatch }
+    requires_file: bets.md
+    skill: bet
+    agent: { tier: balanced, effort: medium, tools: [read, tracker-read], max_turns: 40 }
+    output: { kind: structured, schema: stages/bet-intake/schema.json, max_items: 3 }
+    apply: [create-items]
+    timeout: 20
+    concurrency: { cancel: false }
+    permissions: { actions: write }          # dispatch triage for the new issues
+
+  improve-review:
+    summary: Learn from human reactions to reviews; update review-pr-local in a PR.
+    item: none
+    triggers:
+      - { event: schedule, cron: "0 13 * * 1" }
+      - { event: dispatch, inputs: { since_hours: { description: How many hours of review feedback to inspect, default: "168" } } }
+    skill: improve-review-pr
+    agent: { tier: balanced, effort: medium, tools: [shell, read, edit], max_turns: 40 }
+    output: { kind: patch, states: [], paths: [.claude/skills/review-pr-local/] }
+    apply: [open-pr]
+    timeout: 30
+    concurrency: { cancel: false }
+    permissions: { contents: write, pull-requests: write }
+
+  dependency-bump:
+    summary: Bump a pin to a library's non-breaking release; route a breaking one to a human.
+    item: none
+    triggers:
+      - { event: repository_dispatch, type: factory-dependency-release }
+      - event: dispatch
+        inputs:
+          source_repo: { description: "Released repository, e.g. owner/library", required: true }
+          package: { description: "Package name, e.g. @owner/library", required: true }
+          tag: { description: "Release tag, e.g. ts-v0.3.0", required: true }
+          breaking: { description: "Is the release breaking?", required: true, type: boolean }
+    skill: dependency-bump
+    agent: { tier: fast, effort: medium, tools: [shell, read, edit], max_turns: 40, setup: true, bun: true }
+    when:
+      breaking: { agent: none, apply: [open-breaking-issue] }
+    output: { kind: patch, states: [] }
+    apply: [open-pr]
+    timeout: 30
+    concurrency: { key: "github.event.client_payload.package || inputs.package", cancel: false }
+    permissions: { contents: write, pull-requests: write, actions: write }
+
+  notify-consumers:
+    summary: Tell the repositories under "## Consumers" in FACTORY.md about a release.
+    item: none
+    triggers:
+      - event: call
+        inputs:
+          tag: { description: "Release tag, e.g. ts-v0.3.0", required: true }
+          package: { description: "Package name consumers depend on, e.g. @owner/library", required: true }
+      - event: dispatch
+        inputs:
+          tag: { description: "Release tag, e.g. ts-v0.3.0", required: true }
+          package: { description: "Package name consumers depend on, e.g. @owner/library", required: true }
+    agent: none
+    output: { kind: none }
+    apply: [notify-consumers]
+    timeout: 5
+    permissions: {}

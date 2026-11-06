@@ -1,5 +1,8 @@
 name: "Factory: review"
 
+# 0.1 copy mode: scripts/install-factory.sh copies this file into a repository. 0.2 replaces it
+# with a generated stub that calls .github/workflows/stage.yml (MIGRATION.md); phase 2 deletes it.
+
 # The agent checks out only the workflow's trusted repository revision and reads
 # contributor changes as untrusted review data. A separate publish job validates
 # the review against the immutable prepared diff before posting it.

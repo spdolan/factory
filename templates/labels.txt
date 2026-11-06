@@ -10,3 +10,4 @@ factory:approved|0E8A16|Factory: human approval to start the next stage
 factory:local|006B75|Factory: run the next stage as a session on the self-hosted machine
 factory:proposed|EDEDED|Factory: drafted by the bet skill
 maintenance|EDEDED|Bugs, CI, dependencies, security: needs no bet
+factory:update|5319E7|Factory: a newer factory version or undecided flags; see the issue

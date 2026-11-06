@@ -1,0 +1,74 @@
+{
+  "agent": null,
+  "apply": [
+    "notify-consumers"
+  ],
+  "autonomy": {
+    "never_if": [
+      "invariant-risk"
+    ],
+    "next_stage": {
+      "ready-to-implement": "implement",
+      "ready-to-spec": "spec"
+    },
+    "policy": "standard",
+    "rules": [
+      {
+        "size": [
+          "small"
+        ],
+        "state": "ready-to-implement"
+      },
+      {
+        "size": [
+          "small"
+        ],
+        "state": "ready-to-spec"
+      }
+    ]
+  },
+  "claude_args": "",
+  "conditions": [],
+  "dry_run": false,
+  "factory": {
+    "ref": "refs/tags/v0.2",
+    "release": "v0.2.0",
+    "repo": "acme/factory",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "flag_sources": {
+    "spec-auto-advance": "config.yml features.off"
+  },
+  "flags": {
+    "spec-auto-advance": false
+  },
+  "item": "",
+  "item_kind": "none",
+  "output": {
+    "kind": "none"
+  },
+  "params": {
+    "package": "@acme/lib",
+    "tag": "ts-v0.3.0"
+  },
+  "prompt": "",
+  "reason": "called by another workflow",
+  "run": true,
+  "runtime": "actions",
+  "settle_seconds": 0,
+  "sources": {
+    "autonomy": "factory default",
+    "runtime": "pipeline.yaml",
+    "verify": "factory default"
+  },
+  "stage": "notify-consumers",
+  "timeout": 5,
+  "trigger": "called by another workflow",
+  "update": {
+    "body": "",
+    "current": "v0.2",
+    "needed": false,
+    "newer_line": null,
+    "pending": []
+  }
+}

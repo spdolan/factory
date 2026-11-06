@@ -22,7 +22,7 @@ jobs:
           ./actionlint -color templates/github/workflows/*.yml .github/workflows/*.yml
 
       - name: Lint scripts
-        run: shellcheck scripts/*.sh scripts/factory
+        run: shellcheck scripts/*.sh scripts/factory templates/repo/materialize.sh stages/*/pre.sh
 
       # The factory names no other repository. FACTORY_PRIVATE_NAMES (optional secret)
       # lists bare names to look for without writing them into this public repository.
@@ -30,6 +30,12 @@ jobs:
         env:
           FACTORY_PRIVATE_NAMES: ${{ secrets.FACTORY_PRIVATE_NAMES }}
         run: scripts/check-references.sh
+
+      - name: Install PyYAML if missing
+        run: python3 -c 'import yaml' || python3 -m pip install --quiet --user --break-system-packages pyyaml
+
+      - name: Runner tests
+        run: python3 -m unittest discover -s runner/tests
 
       - name: Compile skill scripts
         run: python3 -m py_compile skills/*/scripts/*.py
@@ -64,3 +70,32 @@ jobs:
           (cd "$tmp" && "$GITHUB_WORKSPACE/scripts/install-factory.sh") > reinstall.log
           grep -q 'keep    .claude/skills/review-pr/SKILL.md' reinstall.log
           grep -q 'local edit' "$tmp/.claude/skills/review-pr/SKILL.md"
+
+      # Install into a throwaway repository. The stubs' owner comes from this checkout's
+      # origin remote, not from the repository they are installed in.
+      - name: Install smoke test
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          git -C "$tmp" init -q
+          git -C "$tmp" remote add origin https://github.com/example/app.git
+          factory="$GITHUB_WORKSPACE/scripts/factory"
+          (cd "$tmp" && "$factory" install --ref main) > install.log
+          ls "$tmp"/.github/workflows/factory-*.yml
+          for f in "$tmp"/.github/workflows/factory-*.yml; do
+            grep -q 'stage.yml@main' "$f" || { echo "$f: not calling stage.yml@main"; exit 1; }
+          done
+          "$GITHUB_WORKSPACE/actionlint" "$tmp"/.github/workflows/factory-*.yml
+          grep -qx '# >>> factory' "$tmp/.gitignore"
+          grep -qx '.factory/' "$tmp/.gitignore"
+          grep -q 'materialize.sh' "$tmp/.claude/settings.json"
+          test -x "$tmp/.github/factory/materialize.sh"
+          test -f "$tmp/.github/factory/config.yml"
+          python3 runner/plan.py validate-config "$tmp/.github/factory/config.yml"
+          python3 runner/plan.py check-stubs "$tmp/.github/workflows"
+          before="$(cd "$tmp" && find . -path ./.git -prune -o -type f -print0 | sort -z | xargs -0 shasum)"
+          (cd "$tmp" && "$factory" install --ref main) > install2.log
+          grep -qx 'Nothing changed.' install2.log
+          after="$(cd "$tmp" && find . -path ./.git -prune -o -type f -print0 | sort -z | xargs -0 shasum)"
+          [ "$before" = "$after" ] || { echo "second install changed files"; exit 1; }
+          (cd "$tmp" && "$factory" update) | grep -qx 'Nothing changed.'

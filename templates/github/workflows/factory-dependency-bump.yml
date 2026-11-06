@@ -1,5 +1,8 @@
 name: "Factory: dependency bump"
 
+# 0.1 copy mode: scripts/install-factory.sh copies this file into a repository. 0.2 replaces it
+# with a generated stub that calls .github/workflows/stage.yml (MIGRATION.md); phase 2 deletes it.
+
 # Runs when a repository this one depends on releases a new version (sent by
 # that repository's factory-notify-consumers.yml), or on dispatch.
 #

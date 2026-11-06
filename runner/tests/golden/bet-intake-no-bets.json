@@ -1,0 +1,86 @@
+{
+  "agent": {
+    "allowed_tools": "Read,Glob,Grep,Bash(factory tracker get:*),Bash(factory tracker related:*),Bash(factory tracker list:*)",
+    "bun": false,
+    "effort": "medium",
+    "json_schema": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"issues\"],\"properties\":{\"issues\":{\"type\":\"array\",\"maxItems\":3,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"body\",\"labels\"],\"properties\":{\"title\":{\"type\":\"string\"},\"body\":{\"type\":\"string\"},\"labels\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}}}}",
+    "max_turns": 40,
+    "mcp_config": "",
+    "model": "claude-sonnet-5-5",
+    "setup": false,
+    "skill": "bet",
+    "tier": "balanced"
+  },
+  "apply": [
+    "create-items"
+  ],
+  "autonomy": {
+    "never_if": [
+      "invariant-risk"
+    ],
+    "next_stage": {
+      "ready-to-implement": "implement",
+      "ready-to-spec": "spec"
+    },
+    "policy": "standard",
+    "rules": [
+      {
+        "size": [
+          "small"
+        ],
+        "state": "ready-to-implement"
+      },
+      {
+        "size": [
+          "small"
+        ],
+        "state": "ready-to-spec"
+      }
+    ]
+  },
+  "claude_args": "--model claude-sonnet-5-5\n--max-turns 40\n--allowedTools \"Read,Glob,Grep,Bash(factory tracker get:*),Bash(factory tracker related:*),Bash(factory tracker list:*)\"\n--json-schema '{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"issues\"],\"properties\":{\"issues\":{\"type\":\"array\",\"maxItems\":3,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"body\",\"labels\"],\"properties\":{\"title\":{\"type\":\"string\"},\"body\":{\"type\":\"string\"},\"labels\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}}}}'",
+  "conditions": [],
+  "dry_run": false,
+  "factory": {
+    "ref": "refs/tags/v0.2",
+    "release": "v0.2.0",
+    "repo": "acme/factory",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "flag_sources": {
+    "spec-auto-advance": "config.yml features.off"
+  },
+  "flags": {
+    "spec-auto-advance": false
+  },
+  "item": "",
+  "item_kind": "none",
+  "output": {
+    "kind": "structured",
+    "max_items": 3,
+    "schema": "stages/bet-intake/schema.json"
+  },
+  "params": {},
+  "prompt": "",
+  "reason": "no bets.md in this repository; run the bet skill locally first",
+  "run": false,
+  "runtime": "actions",
+  "settle_seconds": 0,
+  "sources": {
+    "agent.effort": "pipeline.yaml",
+    "agent.tier": "pipeline.yaml",
+    "autonomy": "factory default",
+    "runtime": "pipeline.yaml",
+    "verify": "factory default"
+  },
+  "stage": "bet-intake",
+  "timeout": 20,
+  "trigger": "dispatch",
+  "update": {
+    "body": "",
+    "current": "v0.2",
+    "needed": false,
+    "newer_line": null,
+    "pending": []
+  }
+}

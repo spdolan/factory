@@ -8,10 +8,30 @@
 #         - Actions settings: read-only default token; Actions may create and approve PRs
 #         - the Claude and FACTORY_GITHUB_TOKEN secrets, and FACTORY_READ_TOKEN when the
 #           factory is private (reported only: use rotate-secrets)
-#         - that the factory files are installed (reported only: use install-factory.sh)
+#         - that the repository is set up: the stubs call one version and match it, config.yml
+#           passes validation, the .gitignore block and SessionStart hook are present
+#           (reported only: use install and update). A repository still in 0.1 copy mode
+#           is told to run install.
 #       --protect-default-branch also checks for (and with --fix creates) a ruleset that
 #       requires a pull request and blocks force pushes and deletion on the default branch.
 #       Rulesets on private repositories need GitHub Pro or higher.
+#
+#   factory install [--ref REF] [--dry-run]
+#       Run at a consuming repository's root. Writes one small stub per stage into
+#       .github/workflows/ calling this factory's reusable workflow at REF (default: the
+#       line tag of this checkout's version, v0.N below 1.0), the .gitignore block, the
+#       SessionStart hook in .claude/settings.json, .github/factory/materialize.sh and
+#       config.yml, and FACTORY.md, vision.md and bets.md if missing. Moving off 0.1
+#       copy mode: removes the vendored skills and workflows that are unchanged since
+#       .claude/factory.lock, keeps and reports the changed ones, and removes the lock.
+#       Safe to run again. --dry-run writes nothing.
+#
+#   factory update [--to REF] [--dry-run]
+#       Run at a consuming repository's root. Renders the stubs, materialize.sh, the
+#       .gitignore block and the hook again. Without --to it keeps the ref the stubs call.
+#       With --to REF it downloads that version and runs its own `factory update`, so the
+#       stubs come from the target's pipeline.yaml. Prints the MIGRATION.md entries
+#       between the two versions for you to follow.
 #
 #   factory rotate-secrets [--owner OWNER] [--dry-run]
 #       Sets each of FACTORY_GITHUB_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY and
@@ -31,6 +51,17 @@
 #       repositories may call its reusable workflows. Rulesets need a public repository or
 #       GitHub Pro.
 #
+#   factory tracker <command> …
+#       The only code that talks to the work tracker (GitHub Issues): get, related, list,
+#       set-state, add-marker, gate, comment, create, edit. Label names come from
+#       pipeline.yaml. `factory tracker --help` lists the commands.
+#
+#   factory materialize [--factory DIR]
+#       Run inside a consuming repository. Copies the factory's skills (from DIR, default
+#       this factory checkout) into .claude/skills/, except skills the repository has
+#       committed itself (`git ls-files`), which are its own forks and stay as they are.
+#       The SessionStart hook and the plan job run it.
+#
 # Consumers are found by what they declare about themselves, so the factory never lists
 # them. The declaration is a repository topic, FACTORY_TOPIC (default `factory`).
 
@@ -42,13 +73,27 @@ SECRETS=(FACTORY_GITHUB_TOKEN CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FACTORY_
 BRANCH_RULESET="factory: protect default branch"
 TAG_RULESET="factory: protect release tags"
 RELEASE_APP="${FACTORY_RELEASE_APP:-}"
+GI_BEGIN="# >>> factory"
+GI_END="# <<< factory"
+# shellcheck disable=SC2016  # Claude Code expands $CLAUDE_PROJECT_DIR, not this script
+HOOK_CMD='bash "$CLAUDE_PROJECT_DIR/.github/factory/materialize.sh"'
 
-usage() { sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,/^$/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; }
 die() { echo "factory: $*" >&2; exit 1; }
 need_gh() { command -v gh >/dev/null || die "needs the GitHub CLI (gh)"; gh auth status >/dev/null 2>&1 || die "run 'gh auth login' first"; }
 this_repo() { gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || die "run this inside a GitHub repository clone"; }
 # factory_repo: OWNER/NAME of this factory checkout, from its origin remote.
-factory_repo() { git -C "$FACTORY_DIR" remote get-url origin 2>/dev/null | sed -E 's#(\.git)?$##; s#.*[:/]([^/]+/[^/]+)$#\1#' || true; }
+factory_repo() { [ -z "${FACTORY_REPO:-}" ] || { echo "$FACTORY_REPO"; return 0; }; git -C "$FACTORY_DIR" remote get-url origin 2>/dev/null | sed -E 's#(\.git)?$##; s#.*[:/]([^/]+/[^/]+)$#\1#' || true; }
+# py ARGS: python3 with PyYAML, through uv when the system python lacks it.
+py() {
+  if python3 -c 'import yaml' 2>/dev/null; then
+    python3 "$@"
+  elif command -v uv >/dev/null; then
+    uv run --quiet --no-project --with pyyaml python3 "$@"
+  else
+    die "needs PyYAML (python3 -m pip install pyyaml) or uv"
+  fi
+}
 # visibility REPO: PUBLIC, PRIVATE or INTERNAL; empty if it can't be read.
 visibility() { gh repo view "$1" --json visibility -q .visibility 2>/dev/null || true; }
 
@@ -110,6 +155,370 @@ put_ruleset() {
   fi
 }
 
+# ---- install and update ------------------------------------------------------------
+
+need_jq() { command -v jq >/dev/null || die "needs jq"; }
+sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
+
+# hook_present: the SessionStart hook is in .claude/settings.json.
+hook_present() {
+  [ -f .claude/settings.json ] && command -v jq >/dev/null &&
+    jq -e --arg c "$HOOK_CMD" 'any(.hooks.SessionStart[]?.hooks[]?; .command == $c)' .claude/settings.json >/dev/null 2>&1
+}
+
+# manifest_version: this checkout's version, e.g. 0.2.0.
+manifest_version() {
+  local v
+  v="$(jq -r '.["."] // empty' "$FACTORY_DIR/.release-please-manifest.json" 2>/dev/null)"
+  [ -n "$v" ] || die "can't read the factory's version from .release-please-manifest.json"
+  echo "$v"
+}
+
+# version_line: the ref that tracks this checkout's minor line (v0.N below 1.0, vN after).
+version_line() {
+  local v
+  v="$(manifest_version)"
+  case "$v" in
+    0.*) echo "v0.$(echo "$v" | cut -d. -f2)" ;;
+    *) echo "v${v%%.*}" ;;
+  esac
+}
+
+# tag_exists REPO TAG: whether the factory has that tag (anonymously, else with your gh login).
+tag_exists() {
+  [ -z "$(GIT_TERMINAL_PROMPT=0 git ls-remote --tags "https://github.com/$1" "refs/tags/$2" 2>/dev/null)" ] || return 0
+  if command -v gh >/dev/null; then gh api "repos/$1/git/ref/tags/$2" >/dev/null 2>&1; else return 1; fi
+}
+
+# check_ref REPO REF: a version tag must exist; any other ref (main, a branch) is taken as is.
+check_ref() {
+  case "$2" in
+    v[0-9]*) tag_exists "$1" "$2" || die "the factory has no tag $2 yet: pass --ref main, or wait for the release" ;;
+  esac
+}
+
+# stub_ref: the ref the repository's stubs call now (first factory stub).
+stub_ref() {
+  local f
+  for f in .github/workflows/factory-*.yml; do
+    [ -f "$f" ] || continue
+    grep -h -m1 -E 'uses:.*\.github/workflows/stage\.yml@' "$f" | sed -E 's/.*stage\.yml@//; s/[[:space:]]*(#.*)?$//' || true
+    return 0
+  done
+}
+
+# repo_root_check: run at the root of a consuming repository, not the factory.
+repo_root_check() {
+  local root
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "run this inside a consuming Git repository"
+  [ "$root" = "$(pwd -P)" ] || die "run this from the repository root: $root"
+  [ "$root" != "$(cd "$FACTORY_DIR" && pwd -P)" ] || die "run this in a consuming repository, not the factory itself"
+}
+
+CHANGES=0
+DRY=false
+say() { printf '%-8s %s\n' "$1" "$2"; }
+
+# put_file SRC DEST [once]: copy a file, saying whether it is new, changed or the same.
+# With "once" an existing file is never replaced.
+put_file() {
+  local src="$1" dest="$2"
+  if [ -e "$dest" ]; then
+    if [ "${3:-}" = once ] || cmp -s "$src" "$dest"; then say same "$dest"; return 0; fi
+    say update "$dest"
+  else
+    say create "$dest"
+  fi
+  CHANGES=$((CHANGES + 1))
+  [ "$DRY" = true ] && return 0
+  mkdir -p "$(dirname "$dest")"
+  cp "$src" "$dest"
+}
+
+# remove_path PATH: remove from git if tracked, and from disk.
+remove_path() {
+  say remove "$1"
+  CHANGES=$((CHANGES + 1))
+  [ "$DRY" = true ] && return 0
+  if [ -n "$(git ls-files -- "$1")" ]; then git rm -r -q -f -- "$1"; fi
+  rm -rf -- "$1"
+}
+
+# migrate_lock STUBDIR: leave 0.1 copy mode. Sets KEEP_STUBS to stub names not to overwrite.
+KEEP_STUBS=" "
+REPLACE_OK=" "   # 0.1 workflows unchanged since the lock that a stub replaces
+migrate_lock() {
+  local lock=.claude/factory.lock stubdir="$1" d name entries locked changed sum path f
+  [ -f "$lock" ] || return 0
+  # Skills: a factory skill directory whose files all match the lock becomes a managed copy.
+  for d in "$FACTORY_DIR"/skills/*/; do
+    [ -f "$d/SKILL.md" ] || continue
+    name="$(basename "$d")"
+    entries="$(awk -v p=".claude/skills/$name/" 'index($2, p) == 1' "$lock")"
+    [ -n "$entries" ] || continue
+    locked="$(awk '{ print $2 }' <<<"$entries")"
+    changed=false
+    while read -r sum path; do
+      if [ ! -f "$path" ] || [ "$(sha256 "$path")" != "$sum" ]; then changed=true; fi
+    done <<<"$entries"
+    if [ -d ".claude/skills/$name" ]; then
+      while IFS= read -r f; do
+        grep -qxF -- "$f" <<<"$locked" || changed=true
+      done < <(find ".claude/skills/$name" -type f ! -name .DS_Store ! -name '*.pyc' ! -path '*/__pycache__/*')
+    fi
+    if [ "$changed" = true ]; then
+      say keep ".claude/skills/$name (changed here: this repository's own fork; delete it to take the factory's)"
+    else
+      remove_path ".claude/skills/$name"
+    fi
+  done
+  # Workflows: old factory-*.yml files that still match the lock.
+  while read -r sum path; do
+    case "$path" in .github/workflows/factory-*.yml) ;; *) continue ;; esac
+    [ -f "$path" ] || continue
+    name="$(basename "$path")"
+    if [ "$(sha256 "$path")" != "$sum" ]; then
+      say keep "$path (changed here; delete it and run factory install again to take the stub)"
+      if [ -f "$stubdir/$name" ]; then KEEP_STUBS="$KEEP_STUBS$name "; fi
+    elif [ ! -f "$stubdir/$name" ]; then
+      remove_path "$path"
+    else
+      REPLACE_OK="$REPLACE_OK$name "
+    fi
+  done < <(grep -v '^#' "$lock")
+  remove_path "$lock"
+}
+
+# sync_managed STUBDIR: stubs, materialize.sh, .gitignore block, hook.
+sync_managed() {
+  local stubdir="$1" f name tmp
+  for f in "$stubdir"/factory-*.yml; do
+    name="$(basename "$f")"
+    case "$KEEP_STUBS" in *" $name "*) continue ;; esac
+    if [ -f ".github/workflows/$name" ] && [[ "$REPLACE_OK" != *" $name "* ]] && ! grep -q '^# factory-stub:' ".github/workflows/$name"; then
+      say keep ".github/workflows/$name (not a generated stub: delete it and run factory update to take the stub)"
+      continue
+    fi
+    put_file "$f" ".github/workflows/$name"
+  done
+  # Stubs of stages that no longer exist.
+  for f in .github/workflows/factory-*.yml; do
+    [ -f "$f" ] || continue
+    name="$(basename "$f")"
+    [ ! -f "$stubdir/$name" ] || continue
+    if grep -q '^# factory-stub:' "$f"; then remove_path "$f"; fi
+  done
+
+  put_file "$FACTORY_DIR/templates/repo/materialize.sh" .github/factory/materialize.sh
+  if [ "$DRY" = false ]; then chmod +x .github/factory/materialize.sh; fi
+
+  # .gitignore block, replaced in place between the markers.
+  tmp="$(mktemp -d)"
+  {
+    echo "$GI_BEGIN"
+    echo "# Managed by factory install and update; edits between the markers are replaced."
+    echo ".factory/"
+    for f in "$FACTORY_DIR"/skills/*/; do
+      if [ -f "$f/SKILL.md" ]; then echo ".claude/skills/$(basename "$f")/"; fi
+    done
+    echo "$GI_END"
+  } > "$tmp/block"
+  if [ -f .gitignore ]; then
+    awk -v bf="$tmp/block" -v b="$GI_BEGIN" -v e="$GI_END" '
+      $0 == b { skip = 1; while ((getline l < bf) > 0) print l; done = 1; next }
+      $0 == e { skip = 0; next }
+      !skip { print }
+      END { if (!done) { if (NR > 0) print ""; while ((getline l < bf) > 0) print l } }
+    ' .gitignore > "$tmp/gitignore"
+  else
+    cp "$tmp/block" "$tmp/gitignore"
+  fi
+  put_file "$tmp/gitignore" .gitignore
+  rm -rf "$tmp"
+
+  # SessionStart hook.
+  if hook_present; then
+    say same ".claude/settings.json (SessionStart hook)"
+  else
+    say update ".claude/settings.json (SessionStart hook)"
+    CHANGES=$((CHANGES + 1))
+    if [ "$DRY" = false ]; then
+      mkdir -p .claude
+      [ -f .claude/settings.json ] || echo '{}' > .claude/settings.json
+      tmp="$(mktemp)"
+      jq --arg c "$HOOK_CMD" '
+        .hooks //= {} | .hooks.SessionStart //= [] |
+        .hooks.SessionStart += [{"hooks": [{"type": "command", "command": $c}]}]
+      ' .claude/settings.json > "$tmp" && mv "$tmp" .claude/settings.json
+    fi
+  fi
+}
+
+# render_stubs REPO REF OUTDIR
+render_stubs() {
+  [ -f "$FACTORY_DIR/runner/plan.py" ] || die "no runner/plan.py in $FACTORY_DIR"
+  py "$FACTORY_DIR/runner/plan.py" render-stubs --uses "$1" --ref "$2" --out "$3" >/dev/null ||
+    die "could not render the stubs"
+  compgen -G "$3/factory-*.yml" >/dev/null || die "render-stubs wrote no stubs"
+}
+
+cmd_install() {
+  local ref=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --ref) ref="${2:?--ref needs a value}"; shift ;;
+      --dry-run) DRY=true ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "install: unknown option $1" ;;
+    esac
+    shift
+  done
+  need_jq
+  repo_root_check
+  local repo stubdir
+  repo="$(factory_repo)"
+  [ -n "$repo" ] || die "can't tell the factory's owner/name: its checkout has no origin remote"
+  [ -n "$ref" ] || ref="$(version_line)"
+  check_ref "$repo" "$ref"
+  stubdir="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$stubdir'" EXIT
+  render_stubs "$repo" "$ref" "$stubdir"
+
+  if [ "$DRY" = true ]; then echo "Dry run: nothing will be written."; fi
+  echo "Installing the factory at $repo@$ref"
+  migrate_lock "$stubdir"
+  sync_managed "$stubdir"
+  put_file "$FACTORY_DIR/templates/repo/config.yml" .github/factory/config.yml once
+  put_file "$FACTORY_DIR/templates/repo/FACTORY.md" FACTORY.md once
+  put_file "$FACTORY_DIR/templates/repo/vision.md" vision.md once
+  put_file "$FACTORY_DIR/templates/repo/bets.md" bets.md once
+
+  if [ "$CHANGES" -eq 0 ]; then
+    echo "Nothing changed."
+    return 0
+  fi
+  if [ "$DRY" = true ]; then echo "$CHANGES change(s) would be made."; return 0; fi
+  cat <<NEXT
+
+$CHANGES change(s). Next:
+  1. Fill in FACTORY.md (validation commands, protected paths, human-only areas, consumers, app),
+     and list .github/factory/config.yml under Protected paths.
+  2. Declare this repository a consumer and fix its labels and Actions settings:
+       $FACTORY_DIR/scripts/factory doctor --fix
+     Set its secrets (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY, and FACTORY_GITHUB_TOKEN):
+       $FACTORY_DIR/scripts/factory rotate-secrets
+  3. Commit the changes and merge them. The next session fetches the skills by itself.
+NEXT
+}
+
+# fetch_factory REPO REF DEST: download the factory at REF into DEST.
+fetch_factory() {
+  local repo="$1" ref="$2" dest="$3" sha="" tmp
+  if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+    sha="$ref"
+  else
+    sha="$(GIT_TERMINAL_PROMPT=0 git ls-remote "https://github.com/$repo" "refs/tags/$ref^{}" "refs/tags/$ref" "refs/heads/$ref" 2>/dev/null | head -1 | cut -f1)"
+    if [ -z "$sha" ] && command -v gh >/dev/null; then sha="$(gh api "repos/$repo/commits/$ref" --jq .sha 2>/dev/null || true)"; fi
+  fi
+  [ -n "$sha" ] || die "can't resolve $ref of $repo"
+  tmp="$(mktemp -d)"
+  if ! curl -fsSL --max-time 120 "https://codeload.github.com/$repo/tar.gz/$sha" -o "$tmp/f.tgz" 2>/dev/null; then
+    gh api "repos/$repo/tarball/$sha" > "$tmp/f.tgz" 2>/dev/null || { rm -rf "$tmp"; die "can't download $repo at ${sha:0:7}"; }
+  fi
+  tar -xzf "$tmp/f.tgz" -C "$dest" --strip-components=1 || { rm -rf "$tmp"; die "bad download"; }
+  rm -rf "$tmp"
+}
+
+# print_migration OLD_REF: the MIGRATION.md entries between OLD_REF's line and this version's.
+print_migration() {
+  python3 - "$FACTORY_DIR" "$1" <<'PY'
+import json, re, sys
+root, old = sys.argv[1], sys.argv[2]
+def line(v):
+    m = re.match(r'^v?(\d+)(?:\.(\d+))?', v)
+    if not m: return None
+    maj, mi = int(m.group(1)), int(m.group(2) or 0)
+    return (0, mi) if maj == 0 else (maj, 0)
+try:
+    new = line(json.load(open(root + "/.release-please-manifest.json"))["."])
+except Exception:
+    new = None
+o = line(old) if re.match(r'^v\d', old) else None
+if o is None or new is None:
+    print(f"Moved from {old}: read MIGRATION.md for the steps between the two versions.")
+    sys.exit(0)
+if o == new:
+    sys.exit(0)
+try:
+    text = open(root + "/MIGRATION.md").read()
+except OSError:
+    print("This version has no MIGRATION.md.")
+    sys.exit(0)
+out = []
+for p in re.split(r'(?m)^(?=## )', text):
+    m = re.match(r'## (\d+)\.(\d+)\s*(?:→|->|to)\s*(\d+)\.(\d+)', p)
+    if m:
+        a, b = (int(m.group(1)), int(m.group(2))), (int(m.group(3)), int(m.group(4)))
+        if a >= o and b <= new:
+            out.append(p.rstrip())
+if out:
+    print("\nMigration steps to follow by hand:\n")
+    print("\n\n".join(out))
+else:
+    print("\nMIGRATION.md has no entries between these versions.")
+PY
+}
+
+cmd_update() {
+  local to="" ref old repo stubdir tmp rc=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --to) to="${2:?--to needs a value}"; shift ;;
+      --dry-run) DRY=true ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "update: unknown option $1" ;;
+    esac
+    shift
+  done
+  need_jq
+  repo_root_check
+  repo="$(factory_repo)"
+  [ -n "$repo" ] || die "can't tell the factory's owner/name: its checkout has no origin remote"
+  old="$(stub_ref)"
+  [ -n "$old" ] || die "no factory stubs in .github/workflows: run factory install"
+  ref="${to:-$old}"
+
+  # A different version: run that version's own update, so the stubs come from its pipeline.yaml.
+  if [ -n "$to" ] && [ -z "${FACTORY_UPDATE_DELEGATED:-}" ] && [ "$to" != "$(version_line)" ] && [ "$to" != "v$(manifest_version)" ]; then
+    check_ref "$repo" "$to"
+    tmp="$(mktemp -d)"
+    fetch_factory "$repo" "$to" "$tmp"
+    local args=(update --to "$to")
+    if [ "$DRY" = true ]; then args+=(--dry-run); fi
+    FACTORY_DIR="$tmp" FACTORY_REPO="$repo" FACTORY_UPDATE_DELEGATED=1 bash "$tmp/scripts/factory" "${args[@]}" || rc=$?
+    rm -rf "$tmp"
+    return "$rc"
+  fi
+
+  check_ref "$repo" "$ref"
+  stubdir="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$stubdir'" EXIT
+  render_stubs "$repo" "$ref" "$stubdir"
+  if [ "$DRY" = true ]; then echo "Dry run: nothing will be written."; fi
+  echo "Updating the factory files to $repo@$ref (was $old)"
+  sync_managed "$stubdir"
+  if [ "$CHANGES" -eq 0 ]; then
+    echo "Nothing changed."
+  elif [ "$DRY" = true ]; then
+    echo "$CHANGES change(s) would be made."
+  else
+    echo "$CHANGES change(s). Review and commit them."
+  fi
+  [ "$old" = "$ref" ] || print_migration "$old"
+}
+
 cmd_doctor() {
   local fix=false protect=false
   while [ $# -gt 0 ]; do
@@ -139,12 +548,40 @@ cmd_doctor() {
     bad "topic '$TOPIC': without it, rotate-secrets skips this repository"
   fi
 
-  # Factory files.
-  if [ -f .claude/factory.lock ] && [ -f FACTORY.md ]; then
-    ok "factory files installed ($(head -1 .claude/factory.lock | sed -E 's/.*factory@([^.]+).*/factory@\1/'))"
+  # Repository setup (0.2): stubs, config, .gitignore block, hook.
+  if [ -f .claude/factory.lock ]; then
+    bad "0.1 copy mode; run factory install to move to stubs"
   else
-    bad "factory files: run $FACTORY_DIR/scripts/install-factory.sh"
+    local out
+    if compgen -G ".github/workflows/factory-*.yml" >/dev/null; then
+      if out="$(py "$FACTORY_DIR/runner/plan.py" check-stubs .github/workflows 2>&1)"; then
+        ok "stubs match the version they call"
+      else
+        bad "stubs: $(printf '%s' "$out" | grep -v '^ok' | head -3 | tr '\n' ' ')(run factory update)"
+      fi
+    else
+      bad "stubs: none in .github/workflows (run factory install)"
+    fi
+    if [ ! -f .github/factory/config.yml ]; then
+      bad ".github/factory/config.yml missing (run factory install)"
+    elif out="$(py "$FACTORY_DIR/runner/plan.py" validate-config .github/factory/config.yml 2>&1)"; then
+      ok "config.yml is valid"
+    else
+      bad "config.yml: $(printf '%s' "$out" | head -3 | tr '\n' ' ')"
+    fi
+    if grep -qxF "$GI_BEGIN" .gitignore 2>/dev/null && grep -qxF "$GI_END" .gitignore 2>/dev/null; then
+      ok ".gitignore block"
+    else
+      bad ".gitignore block (run factory update)"
+    fi
+    if hook_present; then
+      ok "SessionStart hook"
+    else
+      bad "SessionStart hook in .claude/settings.json (run factory update)"
+    fi
+    if [ -f .github/factory/materialize.sh ]; then ok "materialize.sh"; else bad ".github/factory/materialize.sh (run factory update)"; fi
   fi
+  if [ -f FACTORY.md ]; then ok "FACTORY.md"; else bad "FACTORY.md (run factory install)"; fi
 
   # Labels.
   local have name color desc missing=0
@@ -291,10 +728,49 @@ cmd_protect() {
   fi
 }
 
+cmd_materialize() {
+  local src="$FACTORY_DIR" root d name copied=0 kept=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --factory) src="${2:?--factory needs a directory}"; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "materialize: unknown option $1" ;;
+    esac
+    shift
+  done
+  [ -d "$src/skills" ] || die "no skills/ in $src"
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "run this inside a consuming repository"
+  [ "$(cd "$root" && pwd -P)" != "$(cd "$src" && pwd -P)" ] || die "run this in a consuming repository, not the factory"
+  mkdir -p "$root/.claude/skills"
+  for d in "$src"/skills/*/; do
+    name="$(basename "$d")"
+    [ -f "$d/SKILL.md" ] || continue
+    if [ -n "$(git -C "$root" ls-files -- ".claude/skills/$name")" ]; then
+      echo "kept     .claude/skills/$name (committed in this repository: its own fork)"
+      kept=$((kept + 1))
+      continue
+    fi
+    rm -rf "$root/.claude/skills/$name"
+    mkdir -p "$root/.claude/skills/$name"
+    (cd "$d" && find . -type f ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '.DS_Store' -print0 |
+      while IFS= read -r -d '' f; do mkdir -p "$root/.claude/skills/$name/$(dirname "$f")"; cp "$f" "$root/.claude/skills/$name/$f"; done)
+    copied=$((copied + 1))
+  done
+  local from
+  # A downloaded factory (the SessionStart hook) records its commit in .commit; a checkout has git.
+  from="$(cut -c1-7 "$src/.commit" 2>/dev/null || true)"
+  [ -n "$from" ] || from="$(git -C "$src" rev-parse --short HEAD 2>/dev/null || echo "$src")"
+  echo "materialized $copied skill(s) from $from; kept $kept committed"
+}
+
 case "${1:-}" in
   doctor) shift; cmd_doctor "$@" ;;
+  tracker) shift; py "$FACTORY_DIR/runner/tracker.py" "$@" ;;
+  materialize) shift; cmd_materialize "$@" ;;
+  install) shift; cmd_install "$@" ;;
+  update) shift; cmd_update "$@" ;;
   rotate-secrets) shift; cmd_rotate_secrets "$@" ;;
   protect) shift; cmd_protect "$@" ;;
   -h|--help|help|"") usage ;;
-  *) die "unknown command '$1' (doctor, rotate-secrets, protect)" ;;
+  *) die "unknown command '$1' (doctor, install, update, rotate-secrets, protect, tracker, materialize)" ;;
 esac

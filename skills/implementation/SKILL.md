@@ -7,6 +7,8 @@ description: Implement one GitHub issue labeled ready-to-implement. Reads the is
 
 Implement the issue named in the prompt and open a pull request.
 
+When the prompt gives an output contract (a run without write access), it takes precedence over the steps below that write to GitHub. Commit on the branch the skill names and report through the contract instead of pushing, opening the PR, or commenting.
+
 ## Workflow
 
 ### 1. Identify the issue and repository

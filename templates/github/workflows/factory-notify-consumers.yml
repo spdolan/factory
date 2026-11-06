@@ -1,5 +1,8 @@
 name: "Factory: notify consumers"
 
+# 0.1 copy mode: scripts/install-factory.sh copies this file into a repository. 0.2 replaces it
+# with a generated stub that calls .github/workflows/stage.yml (MIGRATION.md); phase 2 deletes it.
+
 # Tells each repository listed under "## Consumers" in FACTORY.md that a new
 # version was released. Each consumer's factory-dependency-bump.yml bumps
 # automatically, or opens an issue for a human if the release is breaking.

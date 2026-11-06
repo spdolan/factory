@@ -1,5 +1,8 @@
 name: "Factory: local session"
 
+# 0.1 copy mode: scripts/install-factory.sh copies this file into a repository. 0.2 replaces it
+# with a generated stub that calls .github/workflows/stage.yml (MIGRATION.md); phase 2 deletes it.
+
 # Starts the implement or spec stage as a background Claude Code session on a
 # self-hosted runner (label: factory), instead of running the agent inside the
 # Actions job. The job only dispatches: it updates a persistent clone, runs

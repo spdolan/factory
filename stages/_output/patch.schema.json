@@ -1,0 +1,1 @@
+{"type":"object","additionalProperties":false,"required":["outcome","branch","pr_title","pr_body","draft","comment","state"],"properties":{"outcome":{"type":"string","enum":["pr","none","blocked"]},"branch":{"type":"string"},"pr_title":{"type":"string"},"pr_body":{"type":"string"},"draft":{"type":"boolean"},"comment":{"type":"string"},"state":{"type":["string","null"]}}}

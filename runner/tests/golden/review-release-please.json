@@ -1,0 +1,91 @@
+{
+  "agent": {
+    "allowed_tools": "Read,Glob,Grep,Write,Bash(python3 .claude/skills/review-pr/scripts/validate_review_json.py:*)",
+    "bun": false,
+    "effort": "medium",
+    "json_schema": "",
+    "max_turns": 40,
+    "mcp_config": "",
+    "model": "claude-haiku-5-5",
+    "setup": false,
+    "skill": "review-pr",
+    "tier": "fast"
+  },
+  "apply": [
+    "publish-review"
+  ],
+  "autonomy": {
+    "never_if": [
+      "invariant-risk"
+    ],
+    "next_stage": {
+      "ready-to-implement": "implement",
+      "ready-to-spec": "spec"
+    },
+    "policy": "standard",
+    "rules": [
+      {
+        "size": [
+          "small"
+        ],
+        "state": "ready-to-implement"
+      },
+      {
+        "size": [
+          "small"
+        ],
+        "state": "ready-to-spec"
+      }
+    ]
+  },
+  "claude_args": "--model claude-haiku-5-5\n--max-turns 40\n--allowedTools \"Read,Glob,Grep,Write,Bash(python3 .claude/skills/review-pr/scripts/validate_review_json.py:*)\"",
+  "conditions": [
+    "small_change"
+  ],
+  "dry_run": false,
+  "factory": {
+    "ref": "refs/tags/v0.2",
+    "release": "v0.2.0",
+    "repo": "acme/factory",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "flag_sources": {
+    "spec-auto-advance": "config.yml features.off"
+  },
+  "flags": {
+    "spec-auto-advance": false
+  },
+  "item": 3,
+  "item_kind": "pr",
+  "output": {
+    "file": "review.json",
+    "kind": "file"
+  },
+  "params": {},
+  "pr": {
+    "base_sha": "1111111111111111111111111111111111111111",
+    "head_sha": "2222222222222222222222222222222222222222"
+  },
+  "prompt": "",
+  "reason": "head branch release-please--branches--main is skipped",
+  "run": false,
+  "runtime": "actions",
+  "settle_seconds": 60,
+  "sources": {
+    "agent.effort": "pipeline.yaml",
+    "agent.tier": "pipeline.yaml when.small_change",
+    "autonomy": "factory default",
+    "runtime": "pipeline.yaml",
+    "verify": "factory default"
+  },
+  "stage": "review",
+  "timeout": 30,
+  "trigger": "pull request opened",
+  "update": {
+    "body": "",
+    "current": "v0.2",
+    "needed": false,
+    "newer_line": null,
+    "pending": []
+  }
+}

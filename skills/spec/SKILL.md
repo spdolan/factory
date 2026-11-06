@@ -7,6 +7,8 @@ description: Coordinate spec work for a GitHub issue labeled ready-to-spec. Runs
 
 Create checked-in specs for the issue named in the prompt. Don't implement the change.
 
+When the prompt gives an output contract (a run without write access), it takes precedence over the steps below that write to GitHub. Commit on the branch the skill names, skip the started and progress comments, and report the novelty decision, file paths and open questions in the contract's `comment` and `state` instead of opening the PR, commenting or labeling.
+
 This skill coordinates three others and owns the issue intake, file locations, branch and PR, status comments, and labels:
 
 - `.claude/skills/novelty-gate/SKILL.md`: should this be built at all?

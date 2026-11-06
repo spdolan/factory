@@ -1,5 +1,8 @@
 name: "Factory: spec"
 
+# 0.1 copy mode: scripts/install-factory.sh copies this file into a repository. 0.2 replaces it
+# with a generated stub that calls .github/workflows/stage.yml (MIGRATION.md); phase 2 deletes it.
+
 # Runs the spec skill: novelty gate, then PRODUCT.md, TECH.md and PRIOR_ART.md
 # in a specs PR. A human reviews that PR and then adds ready-to-implement.
 #

@@ -1,5 +1,8 @@
 name: "Factory: improve review"
 
+# 0.1 copy mode: scripts/install-factory.sh copies this file into a repository. 0.2 replaces it
+# with a generated stub that calls .github/workflows/stage.yml (MIGRATION.md); phase 2 deletes it.
+
 # Outer loop over automated code review:
 # 1. Collect human reactions to review-pr comments in the lookback window
 # 2. If there is anything to learn from, run the improve-review-pr skill
