@@ -10,7 +10,7 @@ This is a small, personal project: one maintainer and a handful of repositories 
 - **Run the checks locally.** They are the same ones CI runs:
 
   ```bash
-  shellcheck scripts/*.sh scripts/factory
+  shellcheck scripts/*.sh scripts/factory templates/repo/materialize.sh
   ```
 
   ```bash
@@ -21,6 +21,12 @@ This is a small, personal project: one maintainer and a handful of repositories 
   scripts/check-references.sh
   ```
 
+  ```bash
+  python3 -m unittest discover -s runner/tests
+  ```
+
+  The runner tests need PyYAML. On a machine without it, run `uv run --no-project --with pyyaml python3 -m unittest discover -s runner/tests`. Each stage has a golden plan under `runner/tests/golden`. Run the tests with `UPDATE_GOLDEN=1` to regenerate them after changing `pipeline.yaml`, `features.yaml`, a prompt or the interpreter. The diff of the golden plans is the behavior change, so review it before you commit.
+
 ## What CI runs on your pull request
 
 Only the linters and smoke tests, with a read-only token and no secrets. Nothing in this repository runs an agent on a pull request from a fork. The first pull request from a new contributor waits for a maintainer to approve the workflow run.
@@ -28,5 +34,5 @@ Only the linters and smoke tests, with a read-only token and no secrets. Nothing
 ## Skills and workflows
 
 - Skills live in `skills/<name>/SKILL.md` with `name:` and `description:` frontmatter; CI checks both.
-- Workflow templates in `templates/github/workflows/` are copied into consuming repositories, so a change there reaches every repository on its next install. Keep them generic: no owner, repository or package names.
+- The stages live in `pipeline.yaml`, `stages/<stage>/prompt.md` and the reusable workflow `.github/workflows/stage.yml`, which repositories call at a release line. Keep them generic: no owner, repository or package names. `templates/github/workflows/` is the 0.1 copy mode, copied into repositories on install; change it only for a fix 0.1 repositories still need.
 - Parts of this repository are derived from MIT-licensed work; see [NOTICE.md](NOTICE.md) and keep it current if you bring more in.

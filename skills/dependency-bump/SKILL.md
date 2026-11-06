@@ -7,6 +7,8 @@ description: Bump this repository's pin on an internal dependency to a new non-b
 
 Move one dependency to one released version, prove nothing broke, and open a PR. The workflow has already decided the release isn't breaking. If you find out otherwise, stop and say so.
 
+When the prompt gives an output contract (a run without write access), it takes precedence over the steps below that write to GitHub. Commit on the branch the skill names and report through the contract instead of pushing or opening the PR.
+
 ## Inputs (from the prompt)
 
 - Package name, source repository, release tag, and version

@@ -78,9 +78,9 @@ Prefer cheap tests that aren't code: for a 0-to-1 product, an email to five pros
 
 ### intake
 
-Non-interactive. For each **open** bet whose cheapest test needs engineering work that doesn't already have an issue:
+Non-interactive. If the prompt gives an output contract (a run without write access), return the drafted issues in that form and don't create issues or labels yourself: the workflow does. For each **open** bet whose cheapest test needs engineering work that doesn't already have an issue:
 
-1. Check open issues for duplicates (`gh issue list --state open --limit 100`).
+1. Check open issues for duplicates (`factory tracker list --state open --limit 100` when available, otherwise `gh issue list --state open --limit 100`).
 2. Draft at most 3 issues per run in total. Each one needs:
    - a Conventional Commits-style title, for example `feat(report): one-page summary for a single city`
    - a body with **Bet** (ID and hypothesis), **Why this tests it**, **Expected behavior**, **Done when** (observable criteria), and **Out of scope**
@@ -88,7 +88,7 @@ Non-interactive. For each **open** bet whose cheapest test needs engineering wor
 3. Create them with `gh issue create`. Don't add readiness labels. Triage does that.
 4. Also turn maintenance items in `TODOS.md` (bugs, CI, dependencies) into issues if they're clearly bounded, labeled `factory:proposed` and `maintenance`, counting toward the limit of 3.
 
-Return a list of the created issue URLs. The workflow dispatches triage for each one.
+Return a list of the created issue URLs. The workflow dispatches triage for each one. With an output contract, return the drafts instead (`title`, `body`, `labels`) and let the workflow create them.
 
 ### signal
 

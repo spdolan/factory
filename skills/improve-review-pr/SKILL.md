@@ -9,6 +9,8 @@ Run a periodic outer loop (weekly by default; daily once PR volume justifies it)
 
 The inner loop is already running: `review-pr` comments on pull requests as they are opened. This skill is the outer loop: read how humans reacted to those comments, extract durable organizational knowledge, and update the review skill so the next inner-loop runs get better.
 
+When the prompt gives an output contract (a run without write access), it takes precedence over the steps below that write to GitHub. Commit on the branch the skill names and report through the contract instead of pushing or opening the PR.
+
 ## Goal
 
 Improve future automated reviews by learning from human validation and correction of previous `review-pr` comments.

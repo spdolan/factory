@@ -1,0 +1,19 @@
+# Every flag the factory has (docs/rollout.md §6.1). It names no repository.
+#
+# state:
+#   preview  off unless a repository opts in (config.yml `features: {preview: all}` or
+#            `features: {on: [id]}`)
+#   default  on unless a repository opts out (`features: {off: [id]}`, or the
+#            FACTORY_FEATURES_OFF variable)
+# A flag gates a stage, trigger or autonomy rule in pipeline.yaml (`feature: <id>`), or
+# adds skills/<skill>/features/<id>.md to the prompt when it is on.
+#
+# The plan job lists flags a repository hasn't decided on (in neither features.on nor
+# features.off) in the factory:update issue.
+
+spec-auto-advance:
+  summary: Agents may start the spec stage for medium ready-to-spec issues without approval (small ones always may).
+  stages: [triage]
+  state: default
+  added: 0.2.0
+  cost: one spec run (balanced tier) per medium ready-to-spec issue that triage lets an agent advance

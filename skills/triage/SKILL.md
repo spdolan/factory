@@ -26,7 +26,15 @@ Take the issue number or URL from the prompt. If the prompt doesn't identify exa
 
 ### 2. Fetch issue context
 
-Use the authenticated `gh` CLI:
+If `factory tracker` is available (the prompt names the command), prefer it:
+
+```sh
+factory tracker get <n>
+factory tracker related <n>
+factory tracker list --state open --limit 50
+```
+
+Otherwise use the authenticated `gh` CLI:
 
 ```sh
 gh issue view <n> --json title,body,labels,comments,author,createdAt
@@ -115,7 +123,7 @@ The state is also the label the workflow applies.
 - no consumer-facing API, schema, wire format, migration, data deletion, auth, secrets, or sensitive data is involved
 - the change can be validated with the repository's automated checks, without local-only resources
 
-Otherwise choose `human`. When in doubt, choose `human`. The workflow can also be stricter than this: the `FACTORY_AUTONOMY` variable can turn agent advancement off, or limit it to small issues. The workflow ignores any `remove_labels` or `risk_labels` entry outside the readiness labels and `invariant-risk`. `risk_labels` is usually empty. Add `invariant-risk` when the change touches a protected path or could break replay identity, a schema, a wire format, or consumers.
+Otherwise choose `human`. When in doubt, choose `human`. The workflow can also be stricter than this: the repository's autonomy setting (`autonomy` in `.github/factory/config.yml`, or the `FACTORY_AUTONOMY` variable) can turn agent advancement off, or limit it to small issues. The workflow ignores any `remove_labels` or `risk_labels` entry outside the readiness labels and `invariant-risk`. `risk_labels` is usually empty. Add `invariant-risk` when the change touches a protected path or could break replay identity, a schema, a wire format, or consumers.
 
 Write `comment` for the issue author: a short first sentence with the decision, the evidence behind it, the bet it serves (or why it is maintenance), and one concrete next step. Don't describe who advances the issue. The workflow appends that line. Use a short bullet list where it helps. Write real line breaks. The structured output handles JSON encoding, so don't escape them as `\n` yourself.
 

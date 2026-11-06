@@ -1,0 +1,49 @@
+# The factory's settings for this repository. Every key is optional; the value
+# shown is the default, so delete what you don't change.
+#
+# Precedence, highest first: a repository Actions variable (the kill switch, which
+# agents can't change), then this file, then the factory's defaults.
+#
+# This file is read from the default branch, so a pull request can't change the
+# config its own review uses. List it under Protected paths in FACTORY.md.
+# Check it with `factory doctor`.
+
+# Who advances an issue after triage: standard | small | off.
+# autonomy: standard
+
+# Attach the browser tools so implement can check its change in a running app.
+# verify: false
+
+features:
+  # Flags in preview: `all`, or a list of flag ids.
+  # preview: all
+  # Flags to turn on or off whatever their state.
+  # on: []
+  # off: []
+
+updates:
+  # Open or update the factory:update issue when a newer version or flag exists.
+  # check: true
+  # Who implements an update issue: human | agent.
+  # advance: human
+
+# Model tiers (fast, balanced, deep) mapped to model IDs.
+# tiers:
+#   fast: claude-sonnet-5-5
+
+# Per-stage overrides. Stage names are in the factory's pipeline.yaml.
+# stages:
+#   implement:
+#     tier: balanced          # fast | balanced | deep
+#     effort: high            # low | medium | high
+#     enabled: true
+#     runtime: actions        # actions | local (a session on your own machine)
+#     when:
+#       risk:                 # autonomous | risk | small_change | breaking
+#         tier: deep
+
+# The local runtime (a session started with your own login).
+# runtimes:
+#   local:
+#     setting_sources: project,local
+#     work_dir: ""            # empty: ~/factory-work

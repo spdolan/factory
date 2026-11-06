@@ -1,0 +1,132 @@
+name: "Factory: prepare"
+description: >-
+  Resolves a stage's plan (mode plan), or readies a job to use it (mode materialize).
+  The job has already checked the factory out into .factory/ at the commit this run was
+  called at (job_workflow_sha from the OIDC token), so this action is always the same
+  version as the workflow that uses it (docs/rollout.md §3).
+
+inputs:
+  mode:
+    description: "plan: resolve the stage and write the job summary. materialize: copy skills and the plan in."
+    required: true
+  stage:
+    description: The stage name from pipeline.yaml
+    required: false
+    default: ""
+  params:
+    description: The stub's inputs, as JSON
+    required: false
+    default: "{}"
+  dry_run:
+    description: "'true' to skip the apply job"
+    required: false
+    default: "false"
+  vars_json:
+    description: The caller's repository variables, as JSON (toJSON(vars))
+    required: false
+    default: "{}"
+  factory_repo:
+    description: owner/name of the factory
+    required: true
+  factory_sha:
+    description: The factory commit this run uses
+    required: true
+  factory_ref:
+    description: The ref the stub called, e.g. refs/tags/v0.2
+    required: false
+    default: ""
+  plan:
+    description: "mode materialize: the plan JSON from the plan job"
+    required: false
+    default: ""
+  token:
+    description: A read-only token for the repository (GITHUB_TOKEN)
+    required: true
+
+outputs:
+  run: { description: "'true' when the stage runs", value: "${{ steps.plan.outputs.run }}" }
+  runtime: { description: "actions or local", value: "${{ steps.plan.outputs.runtime }}" }
+  item: { description: "The issue or PR number", value: "${{ steps.plan.outputs.item }}" }
+  agent: { description: "'true' when the stage has an agent", value: "${{ steps.plan.outputs.agent }}" }
+  output: { description: "structured, file, patch or none", value: "${{ steps.plan.outputs.output }}" }
+  model: { description: "The model ID", value: "${{ steps.plan.outputs.model }}" }
+  effort: { description: "The effort level", value: "${{ steps.plan.outputs.effort }}" }
+  timeout: { description: "Agent job timeout in minutes", value: "${{ steps.plan.outputs.timeout }}" }
+  setup: { description: "'true' to run .github/factory/setup.sh", value: "${{ steps.plan.outputs.setup }}" }
+  skill: { description: "The stage's skill", value: "${{ steps.plan.outputs.skill }}" }
+  apply: { description: "The apply operations, comma-separated", value: "${{ steps.plan.outputs.apply }}" }
+  claude_args: { description: "Arguments for Claude Code", value: "${{ steps.plan.outputs.claude_args }}" }
+  prompt: { description: "The rendered prompt", value: "${{ steps.plan.outputs.prompt }}" }
+  plan: { description: "The whole plan as JSON", value: "${{ steps.plan.outputs.plan }}" }
+  base_sha: { description: "review: the PR's base commit", value: "${{ steps.plan.outputs.base_sha }}" }
+  head_sha: { description: "review: the PR's head commit", value: "${{ steps.plan.outputs.head_sha }}" }
+  allowed_tools: { description: "The allowed tools, comma-separated", value: "${{ steps.plan.outputs.allowed_tools }}" }
+  setting_sources: { description: "local: --setting-sources", value: "${{ steps.plan.outputs.setting_sources }}" }
+  work_dir: { description: "local: the clone's parent directory", value: "${{ steps.plan.outputs.work_dir }}" }
+  session_name: { description: "local: the session's name", value: "${{ steps.plan.outputs.session_name }}" }
+  worktree: { description: "local: the session's worktree", value: "${{ steps.plan.outputs.worktree }}" }
+  gate_awaiting: { description: "The awaiting-approval label", value: "${{ steps.plan.outputs.gate_awaiting }}" }
+
+runs:
+  using: composite
+  steps:
+    - name: PyYAML
+      shell: bash
+      run: python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages pyyaml
+
+    - name: Resolve the plan
+      id: plan
+      if: inputs.mode == 'plan'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        STAGE: ${{ inputs.stage }}
+        PARAMS: ${{ inputs.params }}
+        DRY_RUN: ${{ inputs.dry_run }}
+        VARS_JSON: ${{ inputs.vars_json }}
+        FACTORY_REPO: ${{ inputs.factory_repo }}
+        FACTORY_SHA: ${{ inputs.factory_sha }}
+        FACTORY_REF: ${{ inputs.factory_ref }}
+      run: |
+        set -euo pipefail
+        cd "$GITHUB_WORKSPACE"
+        out="$RUNNER_TEMP/plan.json"
+        # Pull request events plan once quietly to learn whether to wait for pushes to settle
+        # (pipeline.yaml settle_seconds), then plan again on the PR's latest head.
+        if [ "$GITHUB_EVENT_NAME" = pull_request_target ]; then
+          GITHUB_OUTPUT=/dev/null GITHUB_STEP_SUMMARY=/dev/null python3 .factory/runner/plan.py plan --out "$out"
+          settle="$(jq -r '.settle_seconds // 0' "$out")"
+          if [ "$(jq -r .run "$out")" = true ] && [ "$settle" -gt 0 ]; then
+            echo "Waiting ${settle}s for pushes to settle."
+            sleep "$settle"
+          fi
+        fi
+        python3 .factory/runner/plan.py plan --out "$out"
+
+    - name: Ready the job
+      if: inputs.mode == 'materialize'
+      shell: bash
+      env:
+        PLAN: ${{ inputs.plan }}
+        FACTORY_SHA: ${{ inputs.factory_sha }}
+      run: |
+        set -euo pipefail
+        cd "$GITHUB_WORKSPACE"
+        printf '%s' "$PLAN" > "$RUNNER_TEMP/plan.json"
+        echo "$GITHUB_WORKSPACE/.factory/scripts" >> "$GITHUB_PATH"
+        log="$(bash .factory/scripts/factory materialize --factory .factory)"
+        echo "$log"
+        # Keep the factory checkout, its skills and the job's scratch files out of any commit the agent makes.
+        mkdir -p .git/info .factory-io/inputs .factory-io/result
+        {
+          echo ".factory/"
+          echo ".factory-io/"
+          for d in .factory/skills/*/; do echo ".claude/skills/$(basename "$d")/"; done
+        } >> .git/info/exclude
+        {
+          echo "### Skills"
+          echo
+          echo "Factory skills from \`${FACTORY_SHA:0:12}\`:"
+          echo
+          sed 's/^/    /' <<<"$log"
+        } >> "$GITHUB_STEP_SUMMARY"

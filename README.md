@@ -4,9 +4,11 @@ A cloud software factory for small, pre-revenue projects. It is a set of Claude 
 
 ## Where it stands
 
-Today (0.1) the factory is copied into each repository: `scripts/install-factory.sh` puts the skills in `.claude/skills/` and the workflows in `.github/workflows/`, and `scripts/factory` sets each repository up (`doctor`, `rotate-secrets`) and protects the factory itself (`protect`). Every factory change still needs a reinstall and a PR in each repository.
+0.2 is built on a branch and not yet released; 0.1.0 is the current release. In 0.1 the factory is copied into each repository: `scripts/install-factory.sh` puts the skills in `.claude/skills/` and the workflows in `.github/workflows/`, and every factory change needs a reinstall and a PR in each repository. That copy mode still works.
 
-The next line (0.2) replaces the copies with reusable workflows that each repository calls at a release tag, new behavior behind opt-out flags, and update issues opened during normal runs. That design is in [docs/rollout.md](docs/rollout.md) (distribution, versions, flags, update issues), [docs/pipeline.md](docs/pipeline.md) (one configuration-driven stage runner) and [docs/architecture.md](docs/architecture.md) (diagrams). None of it is built yet.
+In 0.2 each repository holds one small generated stub per stage. A stub calls the factory's reusable workflow, `stage.yml`, at a release line such as `@v0.2`. `stage.yml` reads `pipeline.yaml` (the stages, tiers, tools and autonomy rules as data), the repository's `.github/factory/config.yml` and its Actions variables, and resolves a plan. Then three jobs run: plan, agent (read-only, no write token) and apply (the only job that writes). New behavior ships behind the flags in `features.yaml`, and a run opens a `factory:update` issue when a newer version or an undecided flag exists. `scripts/factory` gained `install`, `update`, `tracker` and `materialize`, and `doctor` checks the new setup.
+
+Not built yet: `contract.lock` and its lint, the announce window for flags (there are two flag states, `preview` and `default`, and a repository opt-out), the agent-driven update stage (a human runs `factory update`), `factory try`, the `cloud` runtime, a second tracker adapter and the single-stub option. Nothing has run from `@main` yet; the test repository is converted on a branch. Repositories still on 0.1 follow [MIGRATION.md](MIGRATION.md). The design is in [docs/rollout.md](docs/rollout.md) (distribution, versions, flags, update issues), [docs/pipeline.md](docs/pipeline.md) (the stage runner) and [docs/architecture.md](docs/architecture.md) (diagrams).
 
 It is a port of [warpdotdev-demos/cloud-factory-demo](https://github.com/warpdotdev-demos/cloud-factory-demo) from Warp's Oz runtime to [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action). It adds a product layer (`bet`), a prior-art gate (`novelty-gate`), risk-based autonomy, model tiers chosen for cost, and automatic dependency bumps between repositories.
 
@@ -54,7 +56,7 @@ Triage returns a state (`ready-to-implement`, `ready-to-spec`, `needs-info`, `wa
 - it involves no consumer-facing API, schema, migration, data deletion, auth, secrets or sensitive data
 - automated checks can validate it
 
-Such issues get `factory:agent`, and the next stage is dispatched immediately. Everything else gets `factory:awaiting-approval`, and you add `factory:approved` to start it. The `FACTORY_AUTONOMY` variable can tighten this further: `standard` follows triage, `small` lets agents advance only small issues, and `off` makes humans advance everything.
+Such issues get `factory:agent`, and the next stage is dispatched immediately. Everything else gets `factory:awaiting-approval`, and you add `factory:approved` to start it. The `autonomy` key in `config.yml` (or the `FACTORY_AUTONOMY` variable, which wins) can tighten this further: `standard` follows triage, `small` lets agents advance only small issues, and `off` makes humans advance everything.
 
 Some steps are always human: approving a spec (by adding `ready-to-implement`), merging, and adopting a breaking dependency release. Agents never push to the default branch.
 
@@ -69,7 +71,7 @@ Some steps are always human: approving a spec (by adding `ready-to-implement`), 
 | Dependency bump | Haiku 5.5 | none; breaking releases go to a human instead |
 | Bet intake, improve review | Sonnet 5.5 | none |
 
-Effort is `medium` unless noted, set with `CLAUDE_CODE_EFFORT_LEVEL`. Every model and effort level can be overridden by a repository variable (`FACTORY_MODEL_*`, `FACTORY_EFFORT_*`).
+Effort is `medium` unless noted, set with `CLAUDE_CODE_EFFORT_LEVEL`. Every model and effort level can be set per stage in `.github/factory/config.yml` (`stages.<stage>.tier`, a tier name `fast`, `balanced` or `deep`, or a model ID, and `stages.<stage>.effort`). Repository variables (`FACTORY_MODEL_*`, `FACTORY_EFFORT_*`) still work and take precedence.
 
 Other cost limits:
 
@@ -99,35 +101,36 @@ Commits name the model that made them, for example `Co-Authored-By: Claude Haiku
 
 ## Workflows
 
-They live in `templates/github/workflows/` and are copied into each repository. All of them run `anthropics/claude-code-action@v1.0.245`.
+Each repository has one generated stub per stage in `.github/workflows/`, written by `factory install`. A stub holds the triggers, concurrency, permission ceiling and the version it calls (`uses: <owner>/factory/.github/workflows/stage.yml@v0.2`); everything else is in `pipeline.yaml`. The agent jobs run `anthropics/claude-code-action@v1.0.245`. These are the stages and their triggers:
 
-| Workflow | Trigger |
+| Stage | Trigger |
 |---|---|
-| `factory-triage.yml` | issue opened by an owner, member or collaborator; dispatch |
-| `factory-spec.yml` | `ready-to-spec` added by a human, `factory:approved` on a `ready-to-spec` issue, or dispatch |
-| `factory-implement.yml` | `ready-to-implement` added by a human, `factory:approved` on a `ready-to-implement` issue, or dispatch |
-| `factory-review.yml` | PR opened or updated (`pull_request_target`, trusted-base checkout); dispatch |
-| `factory-improve-review.yml` | weekly; dispatch |
-| `factory-bet-intake.yml` | dispatch (schedule commented out) |
-| `factory-notify-consumers.yml` | called from a library's release-please workflow after publishing |
-| `factory-dependency-bump.yml` | `repository_dispatch` from a library release; dispatch |
-| `factory-local.yml` | `factory:local` on a `ready-to-implement` or `ready-to-spec` issue; dispatch. Starts a background Claude Code session on a self-hosted machine ([docs/local-runner.md](docs/local-runner.md)) |
+| `triage` | issue opened by an owner, member or collaborator; dispatch |
+| `spec` | `ready-to-spec` added by a human, `factory:approved` on a `ready-to-spec` issue, or dispatch |
+| `implement` | `ready-to-implement` added by a human, `factory:approved` on a `ready-to-implement` issue, or dispatch |
+| `review` | PR opened or updated (`pull_request_target`, trusted-base checkout); dispatch |
+| `improve-review` | weekly; dispatch |
+| `bet-intake` | dispatch |
+| `dependency-bump` | `repository_dispatch` from a library release; dispatch |
+| `notify-consumers` | called from a library's release-please workflow after publishing |
+
+The `local` runtime of `stage.yml` (the `local session` job) starts a background Claude Code session on a self-hosted machine for spec and implement. `factory:local` on an issue picks it, or `stages.<stage>.runtime: local` picks it for every issue ([docs/local-runner.md](docs/local-runner.md)). The 0.1 workflows are still in `templates/github/workflows/` for copy mode, including `factory-local.yml`.
 
 ## Versions
 
-Releases come from [release-please](https://github.com/googleapis/release-please) and conventional PR titles, which a CI check enforces. Before 1.0, the minor number is the breaking-change number: `fix:` and `feat:` cut a patch release (new behavior ships behind a flag), and `feat!:` cuts the next minor line. Each release moves its line tag (`v0.1`, `v0.2`, …), which repositories will call once the reusable workflows land ([docs/rollout.md](docs/rollout.md) §2). Nothing is released yet: merging the first release PR cuts 0.1.0, the installer-based factory. Merge the open release PR to release. To roll back, dispatch the Release workflow with `rollback: v0.2.3`.
+Releases come from [release-please](https://github.com/googleapis/release-please) and conventional PR titles, which a CI check enforces. Before 1.0, the minor number is the breaking-change number: `fix:` and `feat:` cut a patch release (new behavior ships behind a flag), and `feat!:` cuts the next minor line. Each release moves its line tag (`v0.1`, `v0.2`, …), which repositories call through their stubs ([docs/rollout.md](docs/rollout.md) §2). 0.1.0, the installer-based factory, is released. The reusable workflows ship as 0.2.0 (`feat(pipeline)!:`). Merge the open release PR to release. To roll back, dispatch the Release workflow with `rollback: v0.2.3`.
 
 ## Set up a repository
 
 The short path. [docs/setup.md](docs/setup.md) has the details and the manual equivalents.
 
-1. **Install the files**, from the root of the repository:
+1. **Install the stubs**, from the root of the repository, on a new branch:
 
    ```bash
-   ~/code/factory/scripts/install-factory.sh
+   ~/code/factory/scripts/factory install
    ```
 
-   The installer copies the skills into `.claude/skills/` and the workflows into `.github/workflows/`, and creates `FACTORY.md`, `vision.md` and `bets.md` if they're missing. It records checksums in `.claude/factory.lock`, so a reinstall upgrades unchanged files and keeps files you or the improve-review loop changed (`--force` overwrites them). `--with-skills DIR` also copies every skill under `DIR` (each subdirectory with a `SKILL.md`); `--dry-run` shows what would change.
+   It writes a stub per stage into `.github/workflows/` that calls this factory at the line tag of your checkout (`--ref main` for a repository that should track every merge), plus `.github/factory/config.yml` and `materialize.sh`, a `.gitignore` block, a SessionStart hook in `.claude/settings.json` that fetches the pinned skills, and `FACTORY.md`, `vision.md` and `bets.md` if they're missing. The skills are not committed. `--dry-run` shows what would change; running it again is safe.
 2. **Fill in `FACTORY.md`**: validation commands, protected paths, human-only areas, consumers, and how to start the app. Agents read it.
 3. **Create the tokens by hand**: a fine-grained `FACTORY_GITHUB_TOKEN` that covers the repositories the factory runs in (never the factory itself), and a Claude credential (`claude setup-token` or an API key). Steps in [docs/setup.md](docs/setup.md#1-create-the-tokens).
 4. **Declare the repository a consumer and fix its settings**, from inside it:
@@ -145,9 +148,9 @@ The short path. [docs/setup.md](docs/setup.md) has the details and the manual eq
    ```
 
    It pipes each exported value to `gh`, writes nothing to disk, and lists the repositories it set. To rotate a token, export the new value and run it again.
-6. **Optional:** repository variables for autonomy and models (`FACTORY_AUTONOMY`, `FACTORY_MODEL_*`, `FACTORY_EFFORT_*`), and `.github/factory/setup.sh` if agents need toolchains or registry credentials (it receives `GITHUB_PACKAGES_TOKEN`). If setup.sh installs a pinned Bun, it should also run `echo "FACTORY_BUN_PATH=$HOME/.bun/bin/bun" >> "$GITHUB_ENV"`, or the agent runs on the Bun that `claude-code-action` installs for itself.
+6. **Optional:** settings in `.github/factory/config.yml` (autonomy, model tiers, effort, flags, runtime; every key has a default). List it under Protected paths in `FACTORY.md`. Repository variables (`FACTORY_AUTONOMY`, `FACTORY_MODEL_*`, `FACTORY_EFFORT_*`) override it. Also `.github/factory/setup.sh` if agents need toolchains or registry credentials (it receives `GITHUB_PACKAGES_TOKEN`). If setup.sh installs a pinned Bun, it should also run `echo "FACTORY_BUN_PATH=$HOME/.bun/bin/bun" >> "$GITHUB_ENV"`, or the agent runs on the Bun that `claude-code-action` installs for itself.
 
-Commit the installed files and merge. To take a factory change, run the installer again and merge the result.
+Commit the installed files and merge. Factory changes then reach the repository through the line its stubs call; a `factory:update` issue says when a newer line or a new flag is waiting, and `factory update --to v0.3` moves the stubs. A repository on 0.1 follows [MIGRATION.md](MIGRATION.md). The 0.1 copy mode (`scripts/install-factory.sh`) still works until phase 2 removes it.
 
 The factory names no other repository. Each repository declares itself with the `factory` topic, and `scripts/factory` finds repositories by it; there is no registry and no infra state. Protect the factory itself once, from inside it, with `scripts/factory protect` (rulesets on `main` and `v*` tags).
 
@@ -166,12 +169,19 @@ The trade-offs are in [docs/rollout.md](docs/rollout.md#11-public-or-private).
 
 | Path | What |
 |---|---|
+| `pipeline.yaml` | the stages, tiers, tool profiles, labels and autonomy rules |
+| `features.yaml` | every flag, with its state |
+| `stages/` | one prompt per stage (`stages/<stage>/prompt.md`), with output schemas |
+| `runner/` | the plan interpreter, `tracker.py`, `agent_output.py` and `apply.py`, with unit tests and golden plans |
+| `.github/workflows/stage.yml` | the reusable workflow every stub calls: plan, agent, apply, and the `local` runtime |
+| `.github/actions/prepare` | resolves the plan and the job summary, readies the skills, runs the update check |
 | `skills/` | the Claude Code skills, one directory each |
-| `templates/github/workflows/` | the workflows the installer copies into a repository |
-| `templates/repo/` | `FACTORY.md`, `vision.md`, `bets.md` starting points |
-| `templates/labels.txt` | the labels `doctor --fix` and the installer create |
-| `scripts/` | `install-factory.sh`, `factory` (doctor, rotate-secrets, protect), `check-references.sh` (CI: no references to other repositories) |
+| `templates/repo/` | `FACTORY.md`, `vision.md`, `bets.md`, `config.yml` and `materialize.sh` starting points |
+| `templates/github/workflows/` | the 0.1 workflows that copy mode installs; removed in phase 2 |
+| `templates/labels.txt` | the labels `doctor --fix` creates |
+| `scripts/` | `factory` (install, update, doctor, rotate-secrets, protect, tracker, materialize), `install-factory.sh` (0.1 copy mode), `check-references.sh` (CI: no references to other repositories) |
 | `docs/` | setup, the local runner, and the 0.2 design (rollout, pipeline, architecture) |
+| `MIGRATION.md` | what a repository does to move between minor lines |
 
 ## Using it locally
 

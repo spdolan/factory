@@ -1,6 +1,6 @@
 # A configuration-driven pipeline
 
-Status: proposal, a companion to [rollout.md](rollout.md). Nothing here is built yet. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md).
+Status: built for 0.2 (not yet released), a companion to [rollout.md](rollout.md). `pipeline.yaml`, `stage.yml`, the runner in `runner/` (plan, `tracker.py`, `agent_output.py`, `apply.py`), the stage prompts and the `actions` and `local` runtimes exist. Not built: the `update` stage, a second tracker adapter, the `cloud` runtime and the single stub. The sketches below are the design; where the real file differs, the real file wins. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md).
 
 ## The problem
 
@@ -38,6 +38,8 @@ Abstract a seam when it already has two implementations or changes often. Keep e
 ### `pipeline.yaml`: the process as data
 
 The factory ships a default pipeline. It names no repository.
+
+The real file uses `triggers:` where this sketch says `on:`, because YAML 1.1 reads a bare `on` as a boolean.
 
 ```yaml
 # factory/pipeline.yaml
@@ -194,7 +196,7 @@ comment <item> <file> create <title> <body-file> [--state s]
 
 **Do it in phase 1 of rollout.md, not as a separate later step.** Phase 1 rewrites every workflow into a reusable workflow anyway. Converting them first to nine bespoke reusable workflows, then to one generic runner, would mean rewriting them twice and migrating the test repository twice. Phase 0 (hygiene) is unaffected.
 
-The order within phase 1, each step tried in the test repository before the next:
+The order within phase 1, each step meant to be tried in the test repository before the next. In practice steps 1 to 4 were built together on one branch, and step 5 (the single stub) is deferred:
 
 1. **`pipeline.yaml`, tiers, tool profiles, prompt templates, `factory tracker`, and `stage.yml` for triage and review.** They already have the three-job shape, so this step only proves the runner and the config.
 2. **Implement and spec on patch output plus apply.** Agents lose `FACTORY_GITHUB_TOKEN`.

@@ -1,6 +1,6 @@
 # Architecture at a glance
 
-Status: target architecture for 0.2, as proposed in [rollout.md](rollout.md) and [pipeline.md](pipeline.md). Today (0.1) the factory is still copied into each repository by `scripts/install-factory.sh`.
+Status: the 0.2 architecture, built on a branch and not yet released, as designed in [rollout.md](rollout.md) and [pipeline.md](pipeline.md). Not built yet: the update run in the second diagram (a human runs `factory update` on the `factory:update` issue), `contract.lock` and the single stub. In 0.1 the factory is copied into each repository by `scripts/install-factory.sh`, and that mode still works.
 
 ## Components
 
@@ -13,7 +13,7 @@ flowchart LR
     REL["Releases<br/>v0.2.3, line tag v0.2<br/>test repository: main"]
     STAGE["stage.yml<br/>plan → agent → apply"]
     DEF["pipeline.yaml · features.yaml<br/>skills · prompt templates · prepare"]
-    CLI["scripts/factory<br/>doctor · rotate-secrets · protect"]
+    CLI["scripts/factory<br/>install · update · doctor · rotate-secrets · protect"]
   end
 
   subgraph C["consuming repository · topic: factory"]

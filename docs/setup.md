@@ -1,6 +1,13 @@
 # Setting up a repository
 
-Install the factory files into the repository (see the [README](../README.md#install-into-a-repository)), then give its workflows credentials and settings with the factory's CLI, [`scripts/factory`](../scripts/factory). The manual steps below do the same thing.
+Install the factory's stubs into the repository, then give its workflows credentials and settings with the factory's CLI, [`scripts/factory`](../scripts/factory). The manual steps below do the same thing.
+
+```bash
+~/code/factory/scripts/factory install            # stubs call the line tag of your checkout, e.g. @v0.2
+~/code/factory/scripts/factory install --ref main # track every merge (the test repository)
+```
+
+Run it on a new branch at the repository root. It writes one stub per stage into `.github/workflows/`, `.github/factory/config.yml` and `materialize.sh`, a `.gitignore` block, and a SessionStart hook in `.claude/settings.json` that fetches the pinned skills. It creates `FACTORY.md`, `vision.md` and `bets.md` if they're missing. `--dry-run` shows the changes. A repository still on the 0.1 copies follows [MIGRATION.md](../MIGRATION.md). The 0.1 installer, `scripts/install-factory.sh`, still works.
 
 ## 1. Create the tokens
 
@@ -71,7 +78,17 @@ export CLAUDE_CODE_OAUTH_TOKEN='<from claude setup-token>'
 
 It sets only the secrets you exported, pipes each value to `gh` (never on a command line), writes nothing to disk, and lists every repository it updated. A repository missing from that list lacks the topic. To rotate a token, export the new value and run it again.
 
-Per-repository settings such as `FACTORY_AUTONOMY` or `FACTORY_MODEL_TRIAGE` are optional repository variables, set with `gh variable set` (below). In 0.2 they move into each repository's `.github/factory/config.yml`.
+### Settings: `config.yml`
+
+Per-repository settings live in `.github/factory/config.yml`. `factory install` writes it with every key commented out at its default, so delete what you don't change. It sets autonomy (`standard`, `small` or `off`), `verify`, model tiers and effort per stage, a stage's runtime, flag opt-ins and opt-outs (`features.on`, `features.off`, `features.preview`) and whether to open update issues. `factory doctor` validates it.
+
+The precedence, highest first:
+
+1. A repository Actions variable, such as `FACTORY_AUTONOMY` or `FACTORY_MODEL_TRIAGE`. It is the kill switch, and agents can't change it.
+2. `config.yml`.
+3. The factory's defaults, in `pipeline.yaml`.
+
+Variables are now optional overrides, set with `gh variable set` (below). A variable you forget to delete keeps overriding the file. The file is read from the default branch, so a pull request can't change the config its own review uses; list it under Protected paths in `FACTORY.md`. [MIGRATION.md](../MIGRATION.md) maps each 0.1 variable to its key.
 
 ### By hand
 
@@ -90,11 +107,11 @@ gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo <owner>/<repo>
 ```
 
 ```bash
-gh variable set FACTORY_MODEL_TRIAGE --repo <owner>/<repo> --body claude-haiku-5-5
+gh variable set FACTORY_MODEL_TRIAGE --repo <owner>/<repo> --body claude-haiku-5-5   # optional override
 ```
 
 ```bash
-~/code/factory/scripts/install-factory.sh --create-labels
+~/code/factory/scripts/factory doctor --fix
 ```
 
 Also turn on **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**. `factory doctor --fix` sets this for you.
@@ -144,4 +161,6 @@ Add this job to the library's `release-please.yml`, after the publish job. Relea
     secrets: inherit
 ```
 
-Then list the consumers under `## Consumers` in the library's `FACTORY.md`. Each consumer's `factory-dependency-bump.yml` bumps the pin for a non-breaking release, or opens an issue for a human when the release notes contain `BREAKING CHANGE`.
+The job also needs the permissions listed in step 6 of the 0.1 → 0.2 entry in [MIGRATION.md](../MIGRATION.md), because the stub's ceiling can't exceed its caller's.
+
+Then list the consumers under `## Consumers` in the library's `FACTORY.md`. Each consumer's `dependency-bump` stage bumps the pin for a non-breaking release, or opens an issue for a human when the release notes contain `BREAKING CHANGE`.

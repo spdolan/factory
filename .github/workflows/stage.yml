@@ -1,0 +1,390 @@
+name: "Factory stage"
+
+# The one reusable workflow every stage runs through (docs/pipeline.md). A consuming
+# repository's generated stub calls it with a stage name; pipeline.yaml says what that
+# stage does. Three jobs:
+#   plan   read-only: finds the factory commit this run was called at, resolves the stage
+#   agent  read-only tokens: Claude Code produces structured JSON, a file, or a patch
+#   apply  the only job that writes; it declares no permissions, so it gets the stub's ceiling
+# The local runtime replaces agent and apply with one detached session on a self-hosted
+# machine that writes for itself. dry_run skips apply everywhere.
+#
+# Nothing in the factory's own CI calls this workflow.
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        description: The stage in pipeline.yaml
+        required: true
+        type: string
+      params:
+        description: The stub's inputs, as JSON
+        required: false
+        type: string
+        default: "{}"
+      dry_run:
+        description: Run plan and agent, write nothing
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: false
+      FACTORY_GITHUB_TOKEN:
+        required: false
+      FACTORY_READ_TOKEN:
+        required: false
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      id-token: write # only to read job_workflow_sha from the OIDC token
+    outputs:
+      run: ${{ steps.prepare.outputs.run }}
+      runtime: ${{ steps.prepare.outputs.runtime }}
+      item: ${{ steps.prepare.outputs.item }}
+      agent: ${{ steps.prepare.outputs.agent }}
+      output: ${{ steps.prepare.outputs.output }}
+      model: ${{ steps.prepare.outputs.model }}
+      effort: ${{ steps.prepare.outputs.effort }}
+      timeout: ${{ steps.prepare.outputs.timeout }}
+      setup: ${{ steps.prepare.outputs.setup }}
+      claude_args: ${{ steps.prepare.outputs.claude_args }}
+      prompt: ${{ steps.prepare.outputs.prompt }}
+      plan: ${{ steps.prepare.outputs.plan }}
+      base_sha: ${{ steps.prepare.outputs.base_sha }}
+      head_sha: ${{ steps.prepare.outputs.head_sha }}
+      allowed_tools: ${{ steps.prepare.outputs.allowed_tools }}
+      setting_sources: ${{ steps.prepare.outputs.setting_sources }}
+      work_dir: ${{ steps.prepare.outputs.work_dir }}
+      session_name: ${{ steps.prepare.outputs.session_name }}
+      worktree: ${{ steps.prepare.outputs.worktree }}
+      gate_awaiting: ${{ steps.prepare.outputs.gate_awaiting }}
+      factory_repo: ${{ steps.factory.outputs.repo }}
+      factory_sha: ${{ steps.factory.outputs.sha }}
+    steps:
+      # github.workflow_sha is the caller's commit, not the factory's. The OIDC token's
+      # job_workflow_ref and job_workflow_sha name this workflow's own repository and commit.
+      - name: Find the factory commit this run was called at
+        id: factory
+        run: |
+          set -euo pipefail
+          jwt="$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=factory" | jq -r .value)"
+          claims="$(python3 -c 'import base64, json, sys
+          p = sys.argv[1].split(".")[1]
+          c = json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)))
+          print(json.dumps({k: c[k] for k in ("job_workflow_ref", "job_workflow_sha")}))' "$jwt")"
+          ref="$(jq -r .job_workflow_ref <<<"$claims")" sha="$(jq -r .job_workflow_sha <<<"$claims")"
+          repo="${ref%%/.github/*}"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || ! [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::Can't read the factory commit from the OIDC token. Does the stub grant id-token: write?" >&2
+            exit 1
+          fi
+          { echo "repo=$repo"; echo "sha=$sha"; echo "ref=${ref#*@}"; } >> "$GITHUB_OUTPUT"
+          echo "Factory $repo at $sha (${ref#*@})"
+
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check out the factory at that commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.factory.outputs.repo }}
+          ref: ${{ steps.factory.outputs.sha }}
+          path: .factory
+          token: ${{ secrets.FACTORY_READ_TOKEN || github.token }}
+
+      - name: Plan
+        id: prepare
+        uses: ./.factory/.github/actions/prepare
+        with:
+          mode: plan
+          stage: ${{ inputs.stage }}
+          params: ${{ inputs.params }}
+          dry_run: ${{ inputs.dry_run }}
+          vars_json: ${{ toJSON(vars) }}
+          factory_repo: ${{ steps.factory.outputs.repo }}
+          factory_sha: ${{ steps.factory.outputs.sha }}
+          factory_ref: ${{ steps.factory.outputs.ref }}
+          token: ${{ github.token }}
+
+  agent:
+    name: agent
+    needs: plan
+    if: needs.plan.outputs.run == 'true' && needs.plan.outputs.agent == 'true' && needs.plan.outputs.runtime == 'actions'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(needs.plan.outputs.timeout) }}
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      packages: read # private packages on GitHub Packages (GITHUB_PACKAGES_TOKEN)
+    env:
+      FACTORY_INPUTS: ${{ github.workspace }}/.factory-io/inputs
+      FACTORY_RESULT: ${{ github.workspace }}/.factory-io/result
+    steps:
+      # For pull_request_target this is the trusted base, never the PR head.
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the factory
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.plan.outputs.factory_repo }}
+          ref: ${{ needs.plan.outputs.factory_sha }}
+          path: .factory
+          token: ${{ secrets.FACTORY_READ_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Skills and plan
+        uses: ./.factory/.github/actions/prepare
+        with:
+          mode: materialize
+          plan: ${{ needs.plan.outputs.plan }}
+          factory_repo: ${{ needs.plan.outputs.factory_repo }}
+          factory_sha: ${{ needs.plan.outputs.factory_sha }}
+          token: ${{ github.token }}
+
+      - name: Stage inputs
+        if: hashFiles(format('.factory/stages/{0}/pre.sh', inputs.stage)) != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ITEM: ${{ needs.plan.outputs.item }}
+          BASE_SHA: ${{ needs.plan.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.plan.outputs.head_sha }}
+          PARAM_SINCE_HOURS: ${{ fromJSON(needs.plan.outputs.plan).params.since_hours }}
+          STAGE: ${{ inputs.stage }}
+        run: bash ".factory/stages/$STAGE/pre.sh"
+
+      - name: Upload stage inputs
+        if: hashFiles('.factory-io/inputs/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-inputs-${{ github.run_attempt }}
+          path: .factory-io/inputs/
+          retention-days: 1
+
+      - name: Repository setup
+        if: needs.plan.outputs.setup == 'true' && hashFiles('.github/factory/setup.sh') != ''
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ github.token }}
+        run: bash .github/factory/setup.sh
+
+      - name: Record the starting commit
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Claude Code
+        id: claude
+        if: hashFiles('.factory-io/inputs/skip-agent') == ''
+        uses: anthropics/claude-code-action@v1.0.245
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLAUDE_CODE_EFFORT_LEVEL: ${{ needs.plan.outputs.effort }}
+          GITHUB_PACKAGES_TOKEN: ${{ github.token }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          # The Bun setup.sh installed, if it exported FACTORY_BUN_PATH. Otherwise the action installs
+          # its own Bun and puts it first on PATH, so the agent's commands would run on that one.
+          path_to_bun_executable: ${{ env.FACTORY_BUN_PATH }}
+          allowed_bots: "github-actions,github-actions[bot],claude[bot],dependabot[bot]"
+          prompt: ${{ needs.plan.outputs.prompt }}
+          claude_args: ${{ needs.plan.outputs.claude_args }}
+
+      - name: Collect the result
+        env:
+          STRUCTURED_OUTPUT: ${{ steps.claude.outputs.structured_output }}
+          BASE: ${{ steps.base.outputs.sha }}
+        run: python3 .factory/runner/agent_output.py --plan "$RUNNER_TEMP/plan.json" --base "$BASE" --out "$FACTORY_RESULT"
+
+      - name: Upload the result
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-result-${{ github.run_attempt }}
+          path: .factory-io/result/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload verification evidence
+        if: always() && hashFiles('verification/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-${{ needs.plan.outputs.item || github.run_id }}
+          path: verification/
+          retention-days: 30
+
+  apply:
+    name: apply
+    needs: [plan, agent]
+    if: >-
+      always() && needs.plan.result == 'success' && needs.plan.outputs.run == 'true' &&
+      !inputs.dry_run && needs.plan.outputs.runtime == 'actions' &&
+      (needs.agent.result == 'success' || (needs.agent.result == 'skipped' && needs.plan.outputs.agent == 'false'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # No permissions here: this job gets exactly the stub's ceiling for this stage.
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the factory
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.plan.outputs.factory_repo }}
+          ref: ${{ needs.plan.outputs.factory_sha }}
+          path: .factory
+          token: ${{ secrets.FACTORY_READ_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Skills and plan
+        uses: ./.factory/.github/actions/prepare
+        with:
+          mode: materialize
+          plan: ${{ needs.plan.outputs.plan }}
+          factory_repo: ${{ needs.plan.outputs.factory_repo }}
+          factory_sha: ${{ needs.plan.outputs.factory_sha }}
+          token: ${{ github.token }}
+
+      - name: Download the result
+        if: needs.plan.outputs.agent == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: factory-result-${{ github.run_attempt }}
+          path: .factory-io/result
+
+      - name: Download the stage inputs
+        if: needs.plan.outputs.output == 'file'
+        uses: actions/download-artifact@v4
+        with:
+          name: factory-inputs-${{ github.run_attempt }}
+          path: .factory-io/inputs
+
+      - name: Apply
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # A token other than GITHUB_TOKEN makes pushes, PRs and dispatched runs trigger CI and review.
+          WRITE_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN || github.token }}
+          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        run: |
+          python3 .factory/runner/apply.py --plan "$RUNNER_TEMP/plan.json" \
+            --result .factory-io/result --inputs .factory-io/inputs
+
+  # The local runtime (docs/local-runner.md): a background Claude Code session on a self-hosted
+  # machine, with the machine owner's logins from its keychain. Detached: the session outlives
+  # this job, opens the PR itself, and there is no apply job.
+  local:
+    name: local session
+    needs: plan
+    if: needs.plan.outputs.run == 'true' && needs.plan.outputs.runtime == 'local'
+    runs-on: [self-hosted, factory]
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    steps:
+      - name: Update the clone
+        id: clone
+        env:
+          REPO: ${{ github.repository }}
+          WORK_DIR: ${{ needs.plan.outputs.work_dir }}
+        run: |
+          set -euo pipefail
+          dir="${WORK_DIR:-$HOME/factory-work}/${REPO#*/}"
+          if [ ! -d "$dir/.git" ]; then
+            echo "::error::No clone at $dir. See docs/local-runner.md in the factory." >&2
+            exit 1
+          fi
+          # The clone's credential helper is gh, which prefers GH_TOKEN over the keyring.
+          env -u GH_TOKEN -u GITHUB_TOKEN git -C "$dir" fetch -q origin
+          default="$(git -C "$dir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/main)"
+          git -C "$dir" checkout -q "${default#origin/}"
+          git -C "$dir" merge -q --ff-only "$default"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: Start the session
+        id: session
+        env:
+          DIR: ${{ steps.clone.outputs.dir }}
+          PROMPT: ${{ needs.plan.outputs.prompt }}
+          MODEL: ${{ needs.plan.outputs.model }}
+          EFFORT: ${{ needs.plan.outputs.effort }}
+          TOOLS: ${{ needs.plan.outputs.allowed_tools }}
+          SETTING_SOURCES: ${{ needs.plan.outputs.setting_sources }}
+          NAME: ${{ needs.plan.outputs.session_name }}
+          WORKTREE: ${{ needs.plan.outputs.worktree }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          cd "$DIR"
+          # No tokens from the job: the session uses the keyring logins. If this call starts
+          # Claude's background service, the service keeps this environment, so it must hold
+          # neither the job's token (it expires with the job) nor an API key (it would bill the API).
+          unset GH_TOKEN GITHUB_TOKEN ANTHROPIC_API_KEY
+          # The runner kills every process tagged with this job's RUNNER_TRACKING_ID when the job
+          # ends, which would take the session down with it.
+          export RUNNER_TRACKING_ID=""
+          # A guard against mistakes, not a security boundary: prefix rules can be bypassed
+          # (bash -c, scripts). Only server-side branch protection stops a push to main.
+          DENY="Bash(git push --force:*),Bash(git push -f:*),Bash(git push origin main:*),Bash(git push origin HEAD:main:*)"
+          DENY="$DENY,Bash(git push origin HEAD:refs/heads/main:*),Bash(git checkout main:*),Bash(git switch main:*)"
+          DENY="$DENY,Bash(gh pr merge:*),Bash(gh api:*),Bash(gh auth:*),Bash(gh secret:*),Bash(gh repo:*),Bash(gh workflow:*)"
+          DENY="$DENY,Bash(sudo:*),Bash(security:*),Bash(curl:*),Bash(wget:*)"
+          # Tags: sessions never need them, and the owner's login can reach release tags others run.
+          DENY="$DENY,Bash(git tag:*),Bash(git push --tags:*),Bash(git push origin --tags:*),Bash(git push --follow-tags:*)"
+          DENY="$DENY,Bash(git push origin --follow-tags:*),Bash(git push origin refs/tags/:*),Bash(git push origin +:*),Bash(git push origin ::*)"
+          DENY="$DENY,Bash(git push --delete:*),Bash(git push origin --delete:*),Bash(git push -d:*),Bash(git push origin -d:*)"
+          cmd=(claude "$PROMPT" --bg --worktree "$WORKTREE" --name "$NAME" --setting-sources "$SETTING_SOURCES"
+            --model "$MODEL" --effort "$EFFORT" --permission-mode dontAsk --allowedTools "$TOOLS" --disallowedTools "$DENY")
+          if [ "$DRY_RUN" = true ]; then
+            echo "Dry run: would start a session in $DIR ($MODEL at $EFFORT effort, worktree $WORKTREE)."
+            exit 0
+          fi
+          # The prompt goes first: --allowedTools and --disallowedTools take lists and would swallow it.
+          out="$("${cmd[@]}" 2>&1)" || { echo "$out" >&2; exit 1; }
+          echo "$out"
+          id="$(sed -nE 's/^backgrounded · ([0-9a-f]+) · .*/\1/p' <<<"$out" | head -1)"
+          if [ -z "$id" ]; then
+            echo "::error::claude --bg didn't print a session ID." >&2
+            exit 1
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Post the session on the issue
+        if: steps.session.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.plan.outputs.item }}
+          ID: ${{ steps.session.outputs.id }}
+          STAGE: ${{ inputs.stage }}
+          MODEL: ${{ needs.plan.outputs.model }}
+          AWAITING: ${{ needs.plan.outputs.gate_awaiting }}
+          RUNNER: ${{ runner.name }}
+        run: |
+          # The detached runtime is the one place outside factory tracker that edits an issue:
+          # the self-hosted machine needn't have Python with PyYAML.
+          gh issue edit "$ISSUE" --repo "$REPO" --remove-label "$AWAITING" >/dev/null 2>&1 || true
+          # shellcheck disable=SC2016 # backticks are Markdown
+          printf 'Started the %s stage as a local Claude Code session `%s` on `%s` (%s).\n\nOn that machine: `claude attach %s` to watch or steer it, or `claude logs %s` for recent output.\n' \
+            "$STAGE" "$ID" "$RUNNER" "$MODEL" "$ID" "$ID" > comment.md
+          gh issue comment "$ISSUE" --repo "$REPO" --body-file comment.md

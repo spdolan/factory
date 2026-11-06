@@ -1,5 +1,8 @@
 name: "Factory: implement"
 
+# 0.1 copy mode: scripts/install-factory.sh copies this file into a repository. 0.2 replaces it
+# with a generated stub that calls .github/workflows/stage.yml (MIGRATION.md); phase 2 deletes it.
+
 # Runs the implementation skill. It opens a PR and never merges.
 #
 # Starts when a human adds ready-to-implement, when a human adds

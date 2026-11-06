@@ -1,0 +1,1 @@
+{"type":"object","additionalProperties":false,"required":["issues"],"properties":{"issues":{"type":"array","maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["title","body","labels"],"properties":{"title":{"type":"string"},"body":{"type":"string"},"labels":{"type":"array","items":{"type":"string"}}}}}}}
