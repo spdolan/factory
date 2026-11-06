@@ -335,6 +335,11 @@ class Route(unittest.TestCase):
         md = "# x\n## Consumers\n- `acme/web`: uses it\n- owner/repo\n## Other\n- `acme/no`\n"
         self.assertEqual(apply.consumers(md), ["acme/web"])
 
+    def test_free_branch(self):
+        self.assertEqual(apply.free_branch("fix/a", set(), "7"), "fix/a")
+        self.assertEqual(apply.free_branch("fix/a", {"fix/a"}, "7"), "fix/a-run7")
+        self.assertEqual(apply.free_branch("fix/a", {"fix/a", "fix/a-run7"}, "7"), "fix/a-run7-2")
+
     def test_triage_comment(self):
         r = {"state": "ready-to-spec", "size": "medium", "comment": "Line one.\\nLine two.", "autonomy_reason": "Why.", "bet": None}
         body = apply.triage_comment(r, {"advance": "human"}, "https://run", "factory:approved")
