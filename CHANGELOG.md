@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.0](https://github.com/spdolan/factory/compare/v0.1.0...v0.2.0) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **pipeline:** reusable workflows and the configuration-driven stage runner ([#19](https://github.com/spdolan/factory/issues/19))
+
+### Features
+
+* **pipeline:** reusable workflows and the configuration-driven stage runner ([#19](https://github.com/spdolan/factory/issues/19)) ([65c114d](https://github.com/spdolan/factory/commit/65c114dd210f352d6554fc7b10411b21f771e7e0))
+
+
+### Bug Fixes
+
+* **apply:** open the PR with GITHUB_TOKEN when FACTORY_GITHUB_TOKEN can't, and report failures ([#22](https://github.com/spdolan/factory/issues/22)) ([756f86b](https://github.com/spdolan/factory/commit/756f86b9fed0535b48bc22631073a6d5492b804c))
+* **materialize:** copy the pinned skills without running fetched code ([#20](https://github.com/spdolan/factory/issues/20)) ([76f5a32](https://github.com/spdolan/factory/commit/76f5a32d2b75113b831d261cf678197f14fbd4f6))
+* **stages:** have patch agents report the PR and state as done ([#23](https://github.com/spdolan/factory/issues/23)) ([6cabd0e](https://github.com/spdolan/factory/commit/6cabd0e02dd9d4b5aaa917b2adba51dda52a6659))
+* **tracker:** don't ask gh issue view for authorAssociation ([#21](https://github.com/spdolan/factory/issues/21)) ([7f4b728](https://github.com/spdolan/factory/commit/7f4b7286518ba02b548dfaf26b2d4c79936f73e1))
+* **workflows:** run agents on the Bun that setup.sh installs ([#17](https://github.com/spdolan/factory/issues/17)) ([246acde](https://github.com/spdolan/factory/commit/246acde3fb425a24fb053a103635ced7e3d238d2))
+
 ## 0.1.0 (2026-11-02)
 
 
