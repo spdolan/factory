@@ -27,7 +27,7 @@ Fields:
 - `branch`: the local branch with your commits. Empty unless `outcome` is `pr`.
 - `pr_title`, `pr_body`: what the skill says the PR title and body should contain. Empty unless `outcome` is `pr`.
 - `draft`: true when the skill says to open the PR as a draft.
-- `comment`: the skill's final report on the issue, in Markdown, with real line breaks. Do not add the PR URL; it is appended for you. Do not include secrets, environment variables or raw command output. Include {{run_url}} as the follow-along link. The "started" and progress comments the skill describes are skipped in this run.
+- `comment`: the skill's final report on the issue, in Markdown, with real line breaks. It is posted after the job has pushed your branch, opened the PR and set `state`, so write it as the skill's report after those steps: the PR exists and the labels are set. Don't say your work is only committed locally, that nothing was pushed, or that a label is only proposed. Do not add the PR URL; it is appended for you. Do not include secrets, environment variables or raw command output. Include {{run_url}} as the follow-along link. The "started" and progress comments the skill describes are skipped in this run.
 - `state`: used only by the spec stage. Use `spec-ready-for-review` when neither spec has material open questions, `wait-to-implement` when the novelty gate decided `adopt` or `drop`, and otherwise null. Every other stage sets null.
 
 Write all five text fields even when empty. Give real line breaks, not `\n` escapes.
