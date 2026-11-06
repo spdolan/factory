@@ -37,6 +37,17 @@ jobs:
       - name: Runner tests
         run: python3 -m unittest discover -s runner/tests
 
+      # actionlint doesn't read composite actions; a YAML error there only shows up when a run loads it.
+      - name: Parse composite actions
+        run: |
+          python3 - <<'PY'
+          import glob, yaml
+          for path in glob.glob(".github/actions/*/action.yml"):
+              action = yaml.safe_load(open(path))
+              assert action["runs"]["using"] == "composite", path
+              print("ok", path)
+          PY
+
       - name: Compile skill scripts
         run: python3 -m py_compile skills/*/scripts/*.py
 

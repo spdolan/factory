@@ -45,27 +45,27 @@ inputs:
 
 outputs:
   run: { description: "'true' when the stage runs", value: "${{ steps.plan.outputs.run }}" }
-  runtime: { description: actions or local, value: "${{ steps.plan.outputs.runtime }}" }
-  item: { description: The issue or PR number, value: "${{ steps.plan.outputs.item }}" }
+  runtime: { description: "actions or local", value: "${{ steps.plan.outputs.runtime }}" }
+  item: { description: "The issue or PR number", value: "${{ steps.plan.outputs.item }}" }
   agent: { description: "'true' when the stage has an agent", value: "${{ steps.plan.outputs.agent }}" }
   output: { description: "structured, file, patch or none", value: "${{ steps.plan.outputs.output }}" }
-  model: { description: The model ID, value: "${{ steps.plan.outputs.model }}" }
-  effort: { description: The effort level, value: "${{ steps.plan.outputs.effort }}" }
-  timeout: { description: Agent job timeout in minutes, value: "${{ steps.plan.outputs.timeout }}" }
+  model: { description: "The model ID", value: "${{ steps.plan.outputs.model }}" }
+  effort: { description: "The effort level", value: "${{ steps.plan.outputs.effort }}" }
+  timeout: { description: "Agent job timeout in minutes", value: "${{ steps.plan.outputs.timeout }}" }
   setup: { description: "'true' to run .github/factory/setup.sh", value: "${{ steps.plan.outputs.setup }}" }
-  skill: { description: The stage's skill, value: "${{ steps.plan.outputs.skill }}" }
-  apply: { description: The apply operations, comma-separated, value: "${{ steps.plan.outputs.apply }}" }
-  claude_args: { description: Arguments for Claude Code, value: "${{ steps.plan.outputs.claude_args }}" }
-  prompt: { description: The rendered prompt, value: "${{ steps.plan.outputs.prompt }}" }
-  plan: { description: The whole plan as JSON, value: "${{ steps.plan.outputs.plan }}" }
+  skill: { description: "The stage's skill", value: "${{ steps.plan.outputs.skill }}" }
+  apply: { description: "The apply operations, comma-separated", value: "${{ steps.plan.outputs.apply }}" }
+  claude_args: { description: "Arguments for Claude Code", value: "${{ steps.plan.outputs.claude_args }}" }
+  prompt: { description: "The rendered prompt", value: "${{ steps.plan.outputs.prompt }}" }
+  plan: { description: "The whole plan as JSON", value: "${{ steps.plan.outputs.plan }}" }
   base_sha: { description: "review: the PR's base commit", value: "${{ steps.plan.outputs.base_sha }}" }
   head_sha: { description: "review: the PR's head commit", value: "${{ steps.plan.outputs.head_sha }}" }
-  allowed_tools: { description: The allowed tools, comma-separated, value: "${{ steps.plan.outputs.allowed_tools }}" }
+  allowed_tools: { description: "The allowed tools, comma-separated", value: "${{ steps.plan.outputs.allowed_tools }}" }
   setting_sources: { description: "local: --setting-sources", value: "${{ steps.plan.outputs.setting_sources }}" }
   work_dir: { description: "local: the clone's parent directory", value: "${{ steps.plan.outputs.work_dir }}" }
   session_name: { description: "local: the session's name", value: "${{ steps.plan.outputs.session_name }}" }
   worktree: { description: "local: the session's worktree", value: "${{ steps.plan.outputs.worktree }}" }
-  gate_awaiting: { description: The awaiting-approval label, value: "${{ steps.plan.outputs.gate_awaiting }}" }
+  gate_awaiting: { description: "The awaiting-approval label", value: "${{ steps.plan.outputs.gate_awaiting }}" }
 
 runs:
   using: composite
