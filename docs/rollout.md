@@ -1,6 +1,6 @@
 # Rolling out factory changes
 
-Status: proposal, third draft. Phase 0 is in progress. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md). The factory can stay private or go public (§11), versions stay below 1.0 so this architecture ships as a minor release, and repositories learn about updates through issues the factory opens during runs that happen anyway, not from a scheduled job. The companion [pipeline.md](pipeline.md) makes the stages themselves configuration.
+Status: phase 0 shipped as v0.1.0 (2026-11-02). Phase 1 is built on one branch and ships as 0.2.0; it has not yet run from `@main` in the test repository. Phase 2 hasn't started. §6 and §7 describe more than 0.2 builds; the notes there say what. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md). The factory can stay private or go public (§11), versions stay below 1.0 so this architecture ships as a minor release, and repositories learn about updates through issues the factory opens during runs that happen anyway, not from a scheduled job. The companion [pipeline.md](pipeline.md) makes the stages themselves configuration.
 
 ## The problem
 
@@ -38,7 +38,7 @@ flowchart LR
     PR["PR, conventional title"] --> Main["main"]
     Main -->|"release-please PR merged"| Rel["v0.2.3<br/>moves v0.2"]
     RW["reusable workflows<br/>skills, scripts<br/>pipeline.yaml, features.yaml"]
-    CLI["scripts/factory<br/>doctor · rotate-secrets · protect"]
+    CLI["scripts/factory<br/>install · update · doctor · rotate-secrets · protect"]
   end
   subgraph test["test repository · topic: factory"]
     TStub["stubs → @main"]
@@ -87,6 +87,8 @@ jobs:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+As built, every stub calls the one `stage.yml` with `stage:` and `params:` inputs, not a workflow per stage, and `factory install` renders it from `pipeline.yaml`. A single stub for all stages is deferred.
 
 - **Secrets are passed by name**, never with `secrets: inherit`.
 - **One level of nesting.** A stub calls one reusable workflow, which calls none.
@@ -142,6 +144,8 @@ updates:
   advance: human       # default; agent = an agent may implement update issues
 ```
 
+The keys are as in `templates/repo/config.yml` (for example `stages.triage.effort`, not `effort.triage`), which `factory doctor` validates.
+
 - **Precedence**, highest first:
   1. A repository Actions variable. It is the kill switch, and agents can't change it.
   2. `config.yml`.
@@ -174,7 +178,7 @@ spec-auto-advance:
   cost: none
 ```
 
-**Lifecycle.**
+**Lifecycle.** 0.2 builds two states, `preview` and `default`, and a repository opt-out (`features.off`). The announce window, `default_from`, `locked` and `retired` below are not built; the one flag so far, `spec-auto-advance`, is `default`.
 1. **preview**: off unless a repository opts in. The test repository uses `preview: all`.
 2. **default**: announced one release ahead, then on from `default_from` unless the repository opted out. A flag only turns on with a release, never on a date.
 3. **locked**: the opt-out is removed. That is a `feat!`, so it waits for the next minor line.
@@ -203,6 +207,8 @@ An update issue lists:
 
 #### 6.3 The update issue goes through the factory like any other issue
 
+Built: the issue itself. The `open-update-issue` operation in any stage's apply job opens or updates it. It carries the `factory:update` and `maintenance` labels, and a human runs `factory update`. Not built: the update stage, `updates.advance: agent`, and the issue being created `ready-to-implement`; the rest of this section is the design.
+
 An update issue is a normal work item:
 - It is created `ready-to-implement` with the `maintenance` and `factory:update` labels.
 - The plan step sends `factory:update` items to the **update stage** instead of implement.
@@ -222,6 +228,8 @@ An update issue is a normal work item:
 
 #### 6.4 The factory's CI keeps the classes honest
 
+Only the title lint (item 1) is built. `contract.lock` and its lint, the `MIGRATION.md` check and the `features.yaml` lint are not; the golden plans in `runner/tests` catch unintended changes to resolved plans in the meantime.
+
 1. **Title lint.** The PR title must follow conventional commits. This is done in phase 0.
 2. **`contract.lock`** is generated from the reusable workflows and `pipeline.yaml`. It records their inputs, secrets, outputs, job IDs, permissions, tool profiles, triggers, defaults and labels.
    - A diff that does more than add an optional input needs `!`.
@@ -231,6 +239,8 @@ An update issue is a normal work item:
 5. **`review-pr` on factory PRs** checks whether the class is right. It is advisory.
 
 ### 7. Trying a branch before it merges
+
+Not built: `factory try` does not exist. To try a branch, run `factory install --ref <branch>` in a throwaway branch of a repository, or dispatch a stub with `dry_run`.
 
 Run `factory try` from inside a consuming repository, with your own `gh` login:
 
@@ -263,19 +273,20 @@ The factory is the most powerful repository you own, so:
   - On `refs/tags/v*`: only the release workflow's GitHub App may create, move or delete tags (open question 4: the GitHub Actions app can't be a bypass actor on a personal account). There is no bypass for admins, because local sessions run with your login, which is an admin. Roll back through the workflow's `rollback` input.
 - **No agent token covers the factory.**
 - **Pull requests from forks** run only the factory's own CI, which never uses `pull_request_target`. Its only secret, `FACTORY_PRIVATE_NAMES`, is empty on fork PRs, so that check is skipped for them and runs again on `main`.
-- **The `factory-local` deny list** blocks tag pushes. The self-hosted runner should run as a dedicated macOS user. Until it does, keep local sessions in repositories pinned to a release.
+- **The `local` runtime's deny list** (`factory-local` in 0.1) blocks tag pushes. The self-hosted runner should run as a dedicated macOS user. Until it does, keep local sessions in repositories pinned to a release.
 
 ### 10. One command-line tool, scoped to the repository it runs in
 
 | Command | Does |
 |---|---|
-| `factory install` | first setup: stubs at the current minor line, `.gitignore` block, SessionStart hook, `config.yml`, `FACTORY.md`, `vision.md`, `bets.md` |
-| `factory update [--to v0.3]` | renders stubs for a version and applies its `MIGRATION.md` steps that a script can do; the update stage's apply job runs the same thing |
-| `factory try …` | §7 |
-| `factory doctor [--fix]` | checks and repairs the consumer declaration, labels and Actions settings, and reports secrets; in 0.2 also the config schema and whether the stubs match the version they call. Exists today |
+| `factory install` | exists. First setup: stubs at the current minor line, `.gitignore` block, SessionStart hook, `config.yml`, `FACTORY.md`, `vision.md`, `bets.md` |
+| `factory update [--to v0.3]` | exists. Renders stubs for a version and prints its `MIGRATION.md` entries for you to follow. A person runs it; the update stage that would run it is not built |
+| `factory try …` | §7. Not built |
+| `factory doctor [--fix]` | checks and repairs the consumer declaration, labels and Actions settings, and reports secrets; also checks the config schema and whether the stubs match the version they call. Exists |
 | `factory rotate-secrets` | sets exported secrets on every declared consumer. Exists today |
 | `factory protect` | run inside the factory: rulesets on `main` and `v*` tags. Exists today |
-| `factory materialize` | what the SessionStart hook runs |
+| `factory materialize` | exists. What the SessionStart hook and the plan job run |
+| `factory tracker …` | exists. The only code that talks to the work tracker ([pipeline.md](pipeline.md)) |
 
 ### 11. Public or private
 
@@ -290,7 +301,7 @@ The design works either way. The factory names no other repository, so going pub
 | Dependabot bumps of pinned versions | works | unverified |
 | Who sees prompts and workflows, who can open PRs | anyone; forks run only the factory's CI | only you |
 
-Two checks settle it. Private reusable-workflow sharing works on a personal account (open question 5, tested). That leaves GitHub Pro (open question 6): with it, private costs one more token; without it, public is simpler, or upgrading also lets other private repositories protect `main`.
+Two checks settle it. Private reusable-workflow sharing works on a personal account (open question 5, tested). That left GitHub Pro (open question 6). The factory is public, so it isn't needed. For a private factory, Pro costs one more token; without it, public is simpler, or upgrading also lets other private repositories protect `main`.
 
 ## Credentials
 
@@ -304,27 +315,27 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
 
 ## Migration
 
-**Phase 0: hygiene, ending in v0.1.0.** On the branch now:
+**Phase 0: hygiene, ending in v0.1.0. Shipped 2026-11-02.**
 1. Remove every reference to another repository, and replace the Terraform infra with self-declared consumers and `scripts/factory` (`doctor`, `rotate-secrets`, `protect`). Add `scripts/check-references.sh` to CI. Make the installer's extra skills generic (`--with-skills`).
 2. Point improve-review-pr at `review-pr-local` only.
 3. Block tag pushes in `factory-local`. `factory protect` sets the factory's rulesets.
 4. Add the PR-title lint and release-please (pre-1.0 settings, moving `v0.N` tags).
 5. Merge, choose public or private (§11), run `factory protect`, tag each consumer (`factory doctor --fix`), run `factory rotate-secrets`, delete the old Terragrunt state, and cut v0.1.0.
 
-**Phase 1: the test repository on `@main`; ships as v0.2.0.**
+**Phase 1: the test repository on `@main`; ships as v0.2.0. Step 1 and the install in step 2 are built on one branch; the rest is to do.** The test repository is converted on a branch (stubs on `@main`, `features: {preview: all}`) and not merged. Nothing has run from `@main` yet.
 1. Build the reusable workflows as the generic stage runner from [pipeline.md](pipeline.md), along with:
    - `prepare`
-   - `pipeline.yaml`, `features.yaml` and `contract.lock`
+   - `pipeline.yaml` and `features.yaml` (`contract.lock` is not built)
    - the `config.yml` schema
-   - the update check and the update stage
-   - the `factory` CLI
-2. Run `factory install` in the test repository. It replaces the vendored copies with stubs at `@main`, adds `config.yml` with `preview: all`, and adds the hook.
-3. Answer the open questions.
-4. Exit when:
-   - every stage, an interactive session and the update stage have all run green from `@main`
+   - the update check and the `factory:update` issue (the update stage is not built)
+   - the `factory` CLI (`install`, `update`, `tracker`, `materialize` and doctor's 0.2 checks; `try` is not built)
+2. Run `factory install` in the test repository (done, on a branch). It replaces the vendored copies with stubs at `@main`, adds `config.yml` with `preview: all`, and adds the hook.
+3. Answer the open questions (to do).
+4. Exit when (to do):
+   - every stage and an interactive session have run green from `@main`; the update stage is deferred, so the `factory:update` issue is checked instead
    - a test flag has gone from preview to default and produced an update issue
 
-**Phase 2: everyone else on `@v0.2`.**
+**Phase 2: everyone else on `@v0.2`.** Not started; the 0.1 copy mode still works until step 4.
 1. Run `factory install` once in each repository. That is one PR each, and the last manual install.
 2. After that, every adoption is an update issue.
 3. Move each repository's settings from its repository variables into its `config.yml`.
@@ -342,10 +353,10 @@ Tested on 2026-11-02 with a throwaway reusable workflow in the private factory, 
 | 5. Can a personal account's private repositories call a private factory's reusable workflows? | **Yes, once the factory's Settings → Actions → General → Access allows repositories owned by the user** (`factory protect` sets it). Before that, the call fails at startup. |
 | Can the caller's `GITHUB_TOKEN` check out a private factory? | **No** ("Repository not found"), so a private factory needs `FACTORY_READ_TOKEN`. |
 
-Still open:
+Answered in phase 0:
 
-4. **Tag-ruleset bypass on a personal account: no.** Tested 2026-11-02 on the factory itself: the rulesets API rejects the GitHub Actions app as a bypass actor with "Actor GitHub Actions integration must be part of the ruleset source or owner organization". The tag ruleset exists without any bypass, which blocks every `v*` tag, including the ones release-please creates. Before the first release, pick one:
-   - **A GitHub App you own**, installed on the factory, as the bypass actor. The release workflow mints an installation token (`actions/create-github-app-token`) and gives it to release-please and the tag push. This also makes release PRs trigger CI, since they are no longer opened with `GITHUB_TOKEN`. Two secrets on the factory (app ID, private key); no agent runs in the factory's CI. Recommended.
+4. **Tag-ruleset bypass on a personal account: no, so a GitHub App is the bypass actor.** Done: `factory protect --release-app` and the release workflow use it. Tested 2026-11-02 on the factory itself: the rulesets API rejects the GitHub Actions app as a bypass actor with "Actor GitHub Actions integration must be part of the ruleset source or owner organization". The tag ruleset exists without any bypass, which blocks every `v*` tag, including the ones release-please creates. The options were:
+   - **A GitHub App you own**, installed on the factory, as the bypass actor. The release workflow mints an installation token (`actions/create-github-app-token`) and gives it to release-please and the tag push. This also makes release PRs trigger CI, since they are no longer opened with `GITHUB_TOKEN`. Two secrets on the factory (app ID, private key); no agent runs in the factory's CI. Chosen.
    - **A deploy key** with write access as the bypass actor, used only for the tag push. release-please's own tag creation still needs a bypass, so this alone is not enough.
    - **A fine-grained PAT** needs the admin role as a bypass actor, which is the admin bypass the design rejects (local sessions run with your login).
-6. **GitHub Pro.** Rulesets on a private factory need it. Checked 2026-11-02: the account is GitHub Free (`gh api repos/<owner>/factory/rulesets` answers 403, "Upgrade to GitHub Pro or make this repository public"), so today `factory protect` and `doctor --protect-default-branch --fix` fail on every private repository. Either upgrade (which also lets the other private repositories protect `main`) or make the factory public.
+6. **GitHub Pro: not needed, because the factory is public.** Rulesets on a private factory need it. Checked 2026-11-02: the account is GitHub Free (`gh api repos/<owner>/factory/rulesets` answers 403, "Upgrade to GitHub Pro or make this repository public"), so `factory protect` and `doctor --protect-default-branch --fix` fail on every private repository. The factory was made public instead; upgrading would also let other private repositories protect `main`.
