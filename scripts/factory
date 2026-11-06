@@ -60,7 +60,8 @@
 #       Run inside a consuming repository. Copies the factory's skills (from DIR, default
 #       this factory checkout) into .claude/skills/, except skills the repository has
 #       committed itself (`git ls-files`), which are its own forks and stay as they are.
-#       The SessionStart hook and the plan job run it.
+#       The agent and apply jobs run it. The SessionStart hook (templates/repo/materialize.sh)
+#       does the same copy itself, so a session runs no code it downloaded.
 #
 # Consumers are found by what they declare about themselves, so the factory never lists
 # them. The declaration is a repository topic, FACTORY_TOPIC (default `factory`).
