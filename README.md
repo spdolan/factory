@@ -145,7 +145,7 @@ The short path. [docs/setup.md](docs/setup.md) has the details and the manual eq
    ```
 
    It pipes each exported value to `gh`, writes nothing to disk, and lists the repositories it set. To rotate a token, export the new value and run it again.
-6. **Optional:** repository variables for autonomy and models (`FACTORY_AUTONOMY`, `FACTORY_MODEL_*`, `FACTORY_EFFORT_*`), and `.github/factory/setup.sh` if agents need toolchains or registry credentials (it receives `GITHUB_PACKAGES_TOKEN`).
+6. **Optional:** repository variables for autonomy and models (`FACTORY_AUTONOMY`, `FACTORY_MODEL_*`, `FACTORY_EFFORT_*`), and `.github/factory/setup.sh` if agents need toolchains or registry credentials (it receives `GITHUB_PACKAGES_TOKEN`). If setup.sh installs a pinned Bun, it should also run `echo "FACTORY_BUN_PATH=$HOME/.bun/bin/bun" >> "$GITHUB_ENV"`, or the agent runs on the Bun that `claude-code-action` installs for itself.
 
 Commit the installed files and merge. To take a factory change, run the installer again and merge the result.
 

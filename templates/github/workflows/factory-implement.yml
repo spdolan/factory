@@ -110,6 +110,9 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.FACTORY_GITHUB_TOKEN || github.token }}
+          # The Bun setup.sh installed, if it exported FACTORY_BUN_PATH. Otherwise the action installs
+          # its own Bun and puts it first on PATH, so the agent's commands would run on that one.
+          path_to_bun_executable: ${{ env.FACTORY_BUN_PATH }}
           allowed_bots: "github-actions,github-actions[bot]"
           prompt: |
             Implement GitHub issue #${{ steps.resolve.outputs.issue }} in ${{ github.repository }}.
