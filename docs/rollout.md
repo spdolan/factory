@@ -341,6 +341,8 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
 3. Move each repository's settings from its repository variables into its `config.yml`.
 4. Delete `templates/github/workflows/` and the installer's copy mode.
 
+**Proposed, not scheduled: session archives and memory.** Keeping each run's transcript in a private archive per organization, turning it into memory each repository reads, and bringing lessons about the factory back to it are proposed in [memory.md](memory.md).
+
 ## Open questions
 
 Tested on 2026-11-02 with a throwaway reusable workflow in the private factory, called from a private consuming repository on the same personal account:
