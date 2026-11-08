@@ -35,8 +35,9 @@
 #
 #   factory rotate-secrets [--owner OWNER] [--dry-run]
 #       Sets each of FACTORY_GITHUB_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY,
-#       FACTORY_READ_TOKEN (needed only while the factory is private) and FACTORY_SKILLS_TOKEN
-#       (read access to private skill sources in .agents/skills.lock) that is
+#       FACTORY_READ_TOKEN (needed only while the factory is private), FACTORY_SKILLS_TOKEN
+#       (read access to private skill sources in .agents/skills.lock) and FACTORY_ARCHIVE_KEY
+#       (a public repository's session-archive key) that is
 #       exported in your shell on every repository OWNER owns that declares itself a consumer
 #       (has the `factory` topic). OWNER defaults to your gh login. Values are piped to gh,
 #       never put on a command line, and nothing is written to disk.
