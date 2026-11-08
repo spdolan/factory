@@ -46,9 +46,11 @@
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "flag_sources": {
+    "session-archive": "config.yml features.off",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
+    "session-archive": false,
     "spec-auto-advance": false
   },
   "item": 8,
@@ -71,6 +73,11 @@
   "reason": "'ready-to-implement' added",
   "run": true,
   "runtime": "local",
+  "sessions": {
+    "archive": "",
+    "encrypt": false,
+    "reason": "flag session-archive is off"
+  },
   "settle_seconds": 0,
   "sources": {
     "agent.effort": "pipeline.yaml",

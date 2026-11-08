@@ -66,6 +66,7 @@ outputs:
   session_name: { description: "local: the session's name", value: "${{ steps.plan.outputs.session_name }}" }
   worktree: { description: "local: the session's worktree", value: "${{ steps.plan.outputs.worktree }}" }
   gate_awaiting: { description: "The awaiting-approval label", value: "${{ steps.plan.outputs.gate_awaiting }}" }
+  archive: { description: "The private repository this run's session goes to; empty when it isn't kept", value: "${{ steps.plan.outputs.archive }}" }
 
 runs:
   using: composite

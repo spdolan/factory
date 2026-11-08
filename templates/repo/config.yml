@@ -27,6 +27,13 @@ updates:
   # Who implements an update issue: human | agent.
   # advance: human
 
+# Keep each run's redacted transcript and a run record in a private archive repository
+# with the same owner as this one (the session-archive flag; docs/memory.md in the
+# factory). Unset: no sessions are kept. A public repository also needs the
+# FACTORY_ARCHIVE_KEY secret, or only run records are kept.
+# sessions:
+#   archive: <owner>/<archive>
+
 # Model tiers (fast, balanced, deep) mapped to model IDs.
 # tiers:
 #   fast: claude-sonnet-5-5

@@ -70,7 +70,7 @@ set -euo pipefail
 
 FACTORY_DIR="${FACTORY_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 TOPIC="${FACTORY_TOPIC:-factory}"
-SECRETS=(FACTORY_GITHUB_TOKEN CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FACTORY_READ_TOKEN)
+SECRETS=(FACTORY_GITHUB_TOKEN CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FACTORY_READ_TOKEN FACTORY_ARCHIVE_KEY)
 BRANCH_RULESET="factory: protect default branch"
 TAG_RULESET="factory: protect release tags"
 RELEASE_APP="${FACTORY_RELEASE_APP:-}"
@@ -633,6 +633,35 @@ cmd_doctor() {
     ok "secret FACTORY_READ_TOKEN (factory is ${vis:-not readable here})"
   else
     bad "secret FACTORY_READ_TOKEN (the factory is ${vis:-not readable here}, so runs need it to fetch the factory): export it and run 'factory rotate-secrets'"
+  fi
+
+  # Session archive (docs/memory.md): private, the same owner, and nobody can read it who can't
+  # read this repository, since it holds this repository's transcripts.
+  local archive
+  archive="$(py "$FACTORY_DIR/runner/plan.py" config-value .github/factory/config.yml sessions.archive 2>/dev/null || true)"
+  if [ -n "$archive" ]; then
+    local info readers ours extra
+    if ! info="$(gh api "repos/$archive" --jq '"\(.private) \(.owner.login)"' 2>/dev/null)"; then
+      bad "session archive $archive: your gh login can't read it (create it as a private repository)"
+    elif [ "${info% *}" != true ]; then
+      bad "session archive $archive isn't private; runs refuse to write to it"
+    elif [ "$(tr '[:upper:]' '[:lower:]' <<<"${info#* }")" != "$(tr '[:upper:]' '[:lower:]' <<<"${repo%%/*}")" ]; then
+      bad "session archive $archive isn't owned by ${repo%%/*}; runs refuse to write to it"
+    elif ! readers="$(gh api --paginate "repos/$archive/collaborators" --jq '.[].login' 2>/dev/null | sort -u)" ||
+         ! ours="$(gh api --paginate "repos/$repo/collaborators" --jq '.[].login' 2>/dev/null | sort -u)"; then
+      bad "session archive $archive: can't list collaborators to compare who can read it"
+    else
+      extra="$(comm -23 <(printf '%s\n' "$readers") <(printf '%s\n' "$ours") | grep -v '^$' || true)"
+      if [ -n "$extra" ]; then
+        bad "session archive $archive can be read by people who can't read $repo: $(tr '\n' ' ' <<<"$extra")"
+      else
+        ok "session archive $archive is private and readable only by people who can read $repo"
+      fi
+    fi
+    if [ "$(visibility "$repo")" = PUBLIC ] && ! grep -qx FACTORY_ARCHIVE_KEY <<<"$secrets"; then
+      bad "secret FACTORY_ARCHIVE_KEY: $repo is public, so its transcripts aren't kept without it (run records still are)"
+    fi
+    echo "         FACTORY_GITHUB_TOKEN needs Contents: read and write on $archive; doctor can't check a token's scopes"
   fi
 
   # Default-branch ruleset, when asked for.

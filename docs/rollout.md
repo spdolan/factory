@@ -310,6 +310,7 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
 | `FACTORY_GITHUB_TOKEN` | each repository | unchanged; never includes the factory. Gains Workflows: write only once agents no longer hold it (§6.3) |
 | `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` | each repository | unchanged |
 | `FACTORY_READ_TOKEN` | each repository, **only while the factory is private** | fine-grained, the factory only, Contents: read. Set and renewed by `factory rotate-secrets` |
+| `FACTORY_ARCHIVE_KEY` | each **public** repository that keeps sessions ([memory.md](memory.md)) | a random value, not a token: encrypts the transcript between the agent and archive jobs, since a public repository's artifacts can be downloaded by anyone signed in |
 | `FACTORY_PRIVATE_NAMES` (optional) | the factory | names `check-references.sh` must never find, kept out of the code (it matters most if the factory goes public) |
 | `FACTORY_RELEASE_APP_CLIENT_ID`, `FACTORY_RELEASE_APP_PRIVATE_KEY` | the factory | a GitHub App you own, installed on the factory only: the one actor that may create or move `v*` tags. Used by the release workflow alone; no agent runs in the factory's CI |
 

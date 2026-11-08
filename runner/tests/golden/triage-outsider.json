@@ -51,9 +51,11 @@
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "flag_sources": {
+    "session-archive": "config.yml features.off",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
+    "session-archive": false,
     "spec-auto-advance": false
   },
   "item": 7,
@@ -73,6 +75,11 @@
   "reason": "opened by NONE, not OWNER/MEMBER/COLLABORATOR",
   "run": false,
   "runtime": "actions",
+  "sessions": {
+    "archive": "",
+    "encrypt": false,
+    "reason": "flag session-archive is off"
+  },
   "settle_seconds": 0,
   "sources": {
     "agent.effort": "pipeline.yaml",

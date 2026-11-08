@@ -37,9 +37,11 @@
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "flag_sources": {
+    "session-archive": "config.yml features.off",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
+    "session-archive": false,
     "spec-auto-advance": false
   },
   "item": "",
@@ -55,6 +57,11 @@
   "reason": "called by another workflow",
   "run": true,
   "runtime": "actions",
+  "sessions": {
+    "archive": "",
+    "encrypt": false,
+    "reason": "flag session-archive is off"
+  },
   "settle_seconds": 0,
   "sources": {
     "autonomy": "factory default",

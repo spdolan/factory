@@ -50,9 +50,11 @@
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "flag_sources": {
+    "session-archive": "config.yml features.off",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
+    "session-archive": false,
     "spec-auto-advance": false
   },
   "item": 3,
@@ -70,6 +72,11 @@
   "reason": "the pull request is a draft",
   "run": false,
   "runtime": "actions",
+  "sessions": {
+    "archive": "",
+    "encrypt": false,
+    "reason": "flag session-archive is off"
+  },
   "settle_seconds": 60,
   "sources": {
     "agent.effort": "pipeline.yaml",

@@ -30,9 +30,10 @@ RUNTIMES = ["actions", "local"]
 CONDITIONS = ["autonomous", "risk", "small_change", "breaking"]
 APPLY_OPS = ["set-state", "add-markers", "route", "comment", "open-pr", "publish-review", "create-items",
              "open-breaking-issue", "notify-consumers", "clear-gate", "open-update-issue"]
-SECRETS = ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "FACTORY_GITHUB_TOKEN", "FACTORY_READ_TOKEN"]
+SECRETS = ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "FACTORY_GITHUB_TOKEN", "FACTORY_READ_TOKEN", "FACTORY_ARCHIVE_KEY"]
 PERMISSION_ORDER = ["contents", "issues", "pull-requests", "packages", "actions", "id-token"]
 SAFE = re.compile(r"^[A-Za-z0-9._:/@+-]+$")
+REPO_NAME = re.compile(r"^[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$")
 
 # --- stubs -------------------------------------------------------------------------------------
 
@@ -183,7 +184,7 @@ def validate_config(cfg, pipeline: dict, features: dict) -> tuple[list[str], lis
     cfg = norm_config(cfg)
     if not isinstance(cfg, dict):
         return ["config.yml must be a mapping"], w
-    top = {"autonomy", "verify", "features", "updates", "tiers", "stages", "runtimes", "effort"}
+    top = {"autonomy", "verify", "features", "updates", "tiers", "stages", "runtimes", "effort", "sessions"}
     for k in cfg:
         if k not in top:
             p.append(f"unknown key '{k}'")
@@ -252,6 +253,15 @@ def validate_config(cfg, pipeline: dict, features: dict) -> tuple[list[str], lis
                             p.append(f"{where}.{cond}.{ok}: only tier, model and effort")
             elif k not in ("tier", "model", "effort", "enabled", "runtime", "small_change_lines", "when"):
                 p.append(f"unknown key '{where}'")
+    sess = cfg.get("sessions") or {}
+    if not isinstance(sess, dict):
+        p.append("sessions must be a mapping (archive)")
+        sess = {}
+    for k, v in sess.items():
+        if k != "archive":
+            p.append(f"unknown key 'sessions.{k}'")
+        elif not isinstance(v, str) or not REPO_NAME.match(v):
+            p.append("sessions.archive must be a repository, owner/name")
     loc = ((cfg.get("runtimes") or {}).get("local") or {})
     for k in loc:
         if k not in ("setting_sources", "work_dir"):
@@ -618,6 +628,11 @@ def resolve(ctx: dict, root: Path = FACTORY_ROOT) -> dict:
     elif st.get("gated"):
         apply_ops.append("clear-gate")
 
+    plan["sessions"] = session_archive(repo, (settings.get("sessions") or {}).get("archive") or "",
+                                       flags.get("session-archive", False), runtime, agent is not None)
+    # On a public repository anyone signed in can download the run's artifacts, so the transcript
+    # crosses from the agent job to the archive job encrypted (docs/memory.md part 1).
+    plan["sessions"]["encrypt"] = bool(plan["sessions"]["archive"]) and ctx.get("private") is not True
     plan["update"] = update_check(ctx, settings, features, undecided)
     if plan["update"]["needed"] and runtime != "local":
         apply_ops.append("open-update-issue")
@@ -630,6 +645,23 @@ def resolve(ctx: dict, root: Path = FACTORY_ROOT) -> dict:
     plan["flag_sources"] = flag_why
     plan["run"], plan["reason"] = (skip is None), (skip or why)
     return plan
+
+
+def session_archive(repo: str, archive: str, flag_on: bool, runtime: str, has_agent: bool) -> dict:
+    """Where this run's transcript goes (docs/memory.md part 1). archive is empty when it isn't kept."""
+    if not flag_on:
+        return {"archive": "", "reason": "flag session-archive is off"}
+    if not archive:
+        return {"archive": "", "reason": "config.yml names no sessions.archive"}
+    if archive.lower() == repo.lower():
+        return {"archive": "", "reason": "sessions.archive can't be the repository itself"}
+    if archive.split("/")[0].lower() != repo.split("/")[0].lower():
+        return {"archive": "", "reason": f"sessions.archive {archive} isn't owned by {repo.split('/')[0]}"}
+    if runtime != "actions":
+        return {"archive": "", "reason": f"the {runtime} runtime keeps its own transcripts"}
+    if not has_agent:
+        return {"archive": "", "reason": "no agent runs"}
+    return {"archive": archive, "reason": "config.yml sessions.archive"}
 
 
 # --- the update check (rollout.md §6.2) -----------------------------------------------------------
@@ -700,6 +732,8 @@ def summary(plan: dict) -> str:
         out += ["| | value | from |", "|---|---|---|"] + [f"| {k} | `{v}` | {s or ''} |" for k, v, s in rows]
     on = [f"`{k}` ({plan['flag_sources'][k]})" for k, v in plan["flags"].items() if v]
     out += ["", f"**Flags on:** {', '.join(on) or 'none'}"]
+    sa = plan.get("sessions") or {}
+    out += [f"**Session archive:** " + (f"`{sa['archive']}`" if sa.get("archive") else f"none ({sa.get('reason', '')})")]
     u = plan["update"]
     out += [f"**Update:** {'pending' if u['needed'] else 'none'}" +
             (f" (newer line {u['newer_line']})" if u.get("newer_line") else "") +
@@ -740,6 +774,9 @@ def gather(env: dict) -> dict:  # pragma: no cover - talks to GitHub; exercised 
             item = {"number": pr["number"], "labels": [x["name"] for x in pr["labels"]], "state": pr["state"],
                     "draft": pr["draft"], "head_ref": pr["head"]["ref"], "base_sha": pr["base"]["sha"],
                     "head_sha": pr["head"]["sha"], "changed_lines": pr["additions"] + pr["deletions"]}
+    private = (event.get("repository") or {}).get("private")
+    if private is None:
+        private = gh("api", f"repos/{repo}", "--jq", ".private", check=False).strip() == "true"
     files = {}
     if st.get("requires_file"):
         files[st["requires_file"]] = Path(st["requires_file"]).exists()
@@ -759,7 +796,7 @@ def gather(env: dict) -> dict:  # pragma: no cover - talks to GitHub; exercised 
     release = next((t for t, s in sorted(tags.items()) if s == sha and parse_version(t) and len(parse_version(t)) == 3), "")
     return {"stage": env["STAGE"], "event_name": env.get("GITHUB_EVENT_NAME", ""), "event": event, "params": params,
             "variables": json.loads(env.get("VARS_JSON") or "{}") or {}, "config": config, "item": item,
-            "repository": repo, "server_url": env.get("GITHUB_SERVER_URL", "https://github.com"),
+            "repository": repo, "private": bool(private), "server_url": env.get("GITHUB_SERVER_URL", "https://github.com"),
             "run_id": env.get("GITHUB_RUN_ID", ""), "dry_run": env.get("DRY_RUN") == "true", "files": files, "tags": tags,
             "factory": {"repo": fac_repo, "sha": sha, "ref": env.get("FACTORY_REF", ""), "release": release}}
 
@@ -783,7 +820,8 @@ def cmd_plan(args) -> int:  # pragma: no cover - IO
                       "work_dir": (plan.get("local") or {}).get("work_dir", ""),
                       "session_name": (plan.get("local") or {}).get("session_name", ""),
                       "worktree": (plan.get("local") or {}).get("worktree", ""),
-                      "allowed_tools": a.get("allowed_tools", ""), "gate_awaiting": load_pipeline()["gate"]["awaiting"]}
+                      "allowed_tools": a.get("allowed_tools", ""),
+                      "archive": (plan.get("sessions") or {}).get("archive", ""), "gate_awaiting": load_pipeline()["gate"]["awaiting"]}
             for k, v in simple.items():
                 fh.write(f"{k}={v}\n")
             for k, v in (("claude_args", plan["claude_args"]), ("prompt", plan["prompt"]),
@@ -807,6 +845,9 @@ def main() -> int:
     c.add_argument("dir")
     v = sub.add_parser("validate-config")
     v.add_argument("path")
+    g = sub.add_parser("config-value", help="print one dotted key of a config.yml, or nothing")
+    g.add_argument("path")
+    g.add_argument("key")
     sub.add_parser("stages")
     args = ap.parse_args()
     if args.cmd == "plan":
@@ -825,6 +866,13 @@ def main() -> int:
         lines, ok = check_stubs(Path(args.dir))
         print("\n".join(lines))
         return 0 if ok else 1
+    elif args.cmd == "config-value":
+        path = Path(args.path)
+        node = norm_config(load_yaml_text(path.read_text(), str(path))) if path.exists() else None
+        for part in args.key.split("."):
+            node = node.get(part) if isinstance(node, dict) else None
+        if node is not None and not isinstance(node, (dict, list)):
+            print(node)
     elif args.cmd == "validate-config":
         path = Path(args.path)
         if not path.exists():
