@@ -117,7 +117,9 @@ jobs:
           grep -Eq "^$GITHUB_REPOSITORY +main +[0-9a-f]{40} +triage$" "$tmp/.agents/skills.lock"
           test -f "$tmp/.claude/skills/triage/SKILL.md"
           head -1 "$tmp/.claude/skills/triage/.gitignore" | grep -q '^# agent-skills: synced'
-          [ -z "$(git -C "$tmp" status --porcelain -- .claude)" ] || { echo "synced skills aren't ignored"; exit 1; }
+          # Synced folders carry their own .gitignore (install's .claude/settings.json is untracked here, so check the skills only).
+          git -C "$tmp" check-ignore -q .claude/skills/triage/SKILL.md || { echo "synced skills aren't ignored"; exit 1; }
+          [ -z "$(git -C "$tmp" status --porcelain --untracked-files=all -- .claude/skills)" ] || { echo "synced skills show in git status"; exit 1; }
           # update keeps the repository's copy of sync-skills.sh at this version's.
           echo "# local drift" >> "$tmp/.agents/sync-skills.sh"
           (cd "$tmp" && "$factory" update) > update3.log
