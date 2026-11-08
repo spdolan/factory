@@ -34,8 +34,9 @@
 #       between the two versions for you to follow.
 #
 #   factory rotate-secrets [--owner OWNER] [--dry-run]
-#       Sets each of FACTORY_GITHUB_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY and
-#       FACTORY_READ_TOKEN (needed only while the factory is private) that is
+#       Sets each of FACTORY_GITHUB_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY,
+#       FACTORY_READ_TOKEN (needed only while the factory is private) and FACTORY_SKILLS_TOKEN
+#       (read access to private skill sources in .agents/skills.lock) that is
 #       exported in your shell on every repository OWNER owns that declares itself a consumer
 #       (has the `factory` topic). OWNER defaults to your gh login. Values are piped to gh,
 #       never put on a command line, and nothing is written to disk.
@@ -56,6 +57,14 @@
 #       set-state, add-marker, gate, comment, create, edit. Label names come from
 #       pipeline.yaml. `factory tracker --help` lists the commands.
 #
+#   factory skills add <owner/repo> <ref> [select] | update <owner/repo> [ref] [select] | sync [--dev|--strict]
+#       Run inside a consuming repository. Skills from other repositories, pinned in
+#       .agents/skills.lock and copied into .claude/skills/ by .agents/sync-skills.sh, which
+#       `add` installs from this factory. `add` and `update` pin a tag or branch's current
+#       commit and sync. The SessionStart hook syncs at every session start; agent jobs get the
+#       same skills when the skill-sources flag is on (FACTORY_SKILLS_TOKEN reads private ones).
+#       select is * (default), plugin names or plugin/skill (marketplace layout), or skill names.
+#
 #   factory materialize [--factory DIR]
 #       Run inside a consuming repository. Copies the factory's skills (from DIR, default
 #       this factory checkout) into .claude/skills/, except skills the repository has
@@ -70,7 +79,7 @@ set -euo pipefail
 
 FACTORY_DIR="${FACTORY_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 TOPIC="${FACTORY_TOPIC:-factory}"
-SECRETS=(FACTORY_GITHUB_TOKEN CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FACTORY_READ_TOKEN FACTORY_ARCHIVE_KEY)
+SECRETS=(FACTORY_GITHUB_TOKEN CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY FACTORY_READ_TOKEN FACTORY_SKILLS_TOKEN FACTORY_ARCHIVE_KEY)
 BRANCH_RULESET="factory: protect default branch"
 TAG_RULESET="factory: protect release tags"
 RELEASE_APP="${FACTORY_RELEASE_APP:-}"
@@ -312,6 +321,11 @@ sync_managed() {
 
   put_file "$FACTORY_DIR/templates/repo/materialize.sh" .github/factory/materialize.sh
   if [ "$DRY" = false ]; then chmod +x .github/factory/materialize.sh; fi
+  # Other skill sources: keep the repository's copy of sync-skills.sh at this version's.
+  if [ -f .agents/skills.lock ]; then
+    put_file "$FACTORY_DIR/templates/repo/sync-skills.sh" .agents/sync-skills.sh
+    if [ "$DRY" = false ]; then chmod +x .agents/sync-skills.sh; fi
+  fi
 
   # .gitignore block, replaced in place between the markers.
   tmp="$(mktemp -d)"
@@ -581,6 +595,13 @@ cmd_doctor() {
       bad "SessionStart hook in .claude/settings.json (run factory update)"
     fi
     if [ -f .github/factory/materialize.sh ]; then ok "materialize.sh"; else bad ".github/factory/materialize.sh (run factory update)"; fi
+    if [ -f .agents/skills.lock ]; then
+      if cmp -s "$FACTORY_DIR/templates/repo/sync-skills.sh" .agents/sync-skills.sh 2>/dev/null; then
+        ok "skill sources (.agents/skills.lock, sync-skills.sh current)"
+      else
+        bad ".agents/sync-skills.sh missing or not this version's (run factory update)"
+      fi
+    fi
   fi
   if [ -f FACTORY.md ]; then ok "FACTORY.md"; else bad "FACTORY.md (run factory install)"; fi
 
@@ -758,6 +779,40 @@ cmd_protect() {
   fi
 }
 
+cmd_skills() {
+  local sub="${1:-}" root
+  [ $# -eq 0 ] || shift
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "run this inside a consuming repository"
+  [ "$(cd "$root" && pwd -P)" != "$(cd "$FACTORY_DIR" && pwd -P)" ] || die "run this in a consuming repository, not the factory"
+  cd "$root"
+  case "$sub" in
+    add|update)
+      [ $# -ge 1 ] || die "skills $sub: give <owner/repo>"
+      if [ "$sub" = add ] && [ $# -lt 2 ]; then die "skills add: give <owner/repo> <ref> [select]"; fi
+      DRY=false CHANGES=0
+      put_file "$FACTORY_DIR/templates/repo/sync-skills.sh" .agents/sync-skills.sh
+      chmod +x .agents/sync-skills.sh
+      bash .agents/sync-skills.sh update "$@" || die "skills $sub failed"
+      cat <<NEXT
+
+Next:
+  1. Commit .agents/skills.lock and .agents/sync-skills.sh. Sessions sync at start (the factory's
+     SessionStart hook); in a claude.ai cloud environment, add the source repository under
+     Repositories so a session can read it.
+  2. For agent jobs, turn on the flag in .github/factory/config.yml (features: {on: [skill-sources]},
+     or preview: all) and, for a private source, set FACTORY_SKILLS_TOKEN (read-only on it) and run
+     factory update so the stubs pass it.
+NEXT
+      ;;
+    sync)
+      [ -f .agents/sync-skills.sh ] || die "no .agents/sync-skills.sh (run factory skills add)"
+      bash .agents/sync-skills.sh "$@"
+      ;;
+    -h|--help|"") usage ;;
+    *) die "skills: unknown subcommand '$sub' (add, update, sync)" ;;
+  esac
+}
+
 cmd_materialize() {
   local src="$FACTORY_DIR" root d name copied=0 kept=0
   while [ $# -gt 0 ]; do
@@ -797,10 +852,11 @@ case "${1:-}" in
   doctor) shift; cmd_doctor "$@" ;;
   tracker) shift; py "$FACTORY_DIR/runner/tracker.py" "$@" ;;
   materialize) shift; cmd_materialize "$@" ;;
+  skills) shift; cmd_skills "$@" ;;
   install) shift; cmd_install "$@" ;;
   update) shift; cmd_update "$@" ;;
   rotate-secrets) shift; cmd_rotate_secrets "$@" ;;
   protect) shift; cmd_protect "$@" ;;
   -h|--help|help|"") usage ;;
-  *) die "unknown command '$1' (doctor, install, update, rotate-secrets, protect, tracker, materialize)" ;;
+  *) die "unknown command '$1' (doctor, install, update, rotate-secrets, protect, tracker, skills, materialize)" ;;
 esac

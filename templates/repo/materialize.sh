@@ -9,6 +9,10 @@
 # Trust: the stubs' ref decides which skills sessions follow, as it decides what CI runs.
 # A release line (@v0.2) changes only through the factory's release workflow; @main changes
 # with every factory merge, which is right only for the test repository.
+#
+# Other skill sources: if the repository has .agents/skills.lock, this hook then runs the
+# repository's committed .agents/sync-skills.sh (`factory skills add` installs it), which copies
+# the pinned skills the lock lists. Factory skills are copied first, so they win a name clash.
 
 set -u
 
@@ -90,5 +94,12 @@ copy_skills() {
 
 if ! msg="$(materialize 2>&1)"; then
   warn "$(printf '%s' "$msg" | tail -1)"
+fi
+
+# Skills from the repository's other sources. sync-skills.sh is committed in the repository, not
+# downloaded, and like this hook it never blocks a session.
+root="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+if [ -n "$root" ] && [ -f "$root/.agents/skills.lock" ] && [ -f "$root/.agents/sync-skills.sh" ]; then
+  bash "$root/.agents/sync-skills.sh" || true
 fi
 exit 0

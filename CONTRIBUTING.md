@@ -10,7 +10,7 @@ This is a small, personal project: one maintainer and a handful of repositories 
 - **Run the checks locally.** They are the same ones CI runs:
 
   ```bash
-  shellcheck scripts/*.sh scripts/factory templates/repo/materialize.sh
+  shellcheck scripts/*.sh scripts/factory templates/repo/materialize.sh templates/repo/sync-skills.sh
   ```
 
   ```bash

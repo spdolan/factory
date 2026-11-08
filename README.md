@@ -176,10 +176,10 @@ The trade-offs are in [docs/rollout.md](docs/rollout.md#11-public-or-private).
 | `.github/workflows/stage.yml` | the reusable workflow every stub calls: plan, agent, apply, and the `local` runtime |
 | `.github/actions/prepare` | resolves the plan and the job summary, readies the skills, runs the update check |
 | `skills/` | the Claude Code skills, one directory each |
-| `templates/repo/` | `FACTORY.md`, `vision.md`, `bets.md`, `config.yml` and `materialize.sh` starting points |
+| `templates/repo/` | `FACTORY.md`, `vision.md`, `bets.md`, `config.yml` and `materialize.sh` starting points, and `sync-skills.sh` (skills from other repositories, pinned in a repository's `.agents/skills.lock`; installed by `factory skills add`) |
 | `templates/github/workflows/` | the 0.1 workflows that copy mode installs; removed in phase 2 |
 | `templates/labels.txt` | the labels `doctor --fix` creates |
-| `scripts/` | `factory` (install, update, doctor, rotate-secrets, protect, tracker, materialize), `install-factory.sh` (0.1 copy mode), `check-references.sh` (CI: no references to other repositories) |
+| `scripts/` | `factory` (install, update, doctor, rotate-secrets, protect, tracker, skills, materialize), `install-factory.sh` (0.1 copy mode), `check-references.sh` (CI: no references to other repositories) |
 | `docs/` | setup, the local runner, and the 0.2 design (rollout, pipeline, architecture) |
 | `MIGRATION.md` | what a repository does to move between minor lines |
 

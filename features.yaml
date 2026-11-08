@@ -18,6 +18,13 @@ spec-auto-advance:
   added: 0.2.0
   cost: one spec run (balanced tier) per medium ready-to-spec issue that triage lets an agent advance
 
+skill-sources:
+  summary: Agent jobs also get the skills a repository pins in .agents/skills.lock (other skill repositories), fetched in the plan job so the agent job holds no token for them.
+  stages: [triage, spec, implement, review, bet-intake, improve-review, dependency-bump]
+  state: preview
+  added: 0.2.0
+  cost: none; the plan job downloads the pinned sources (a tarball per source) when the lock exists
+
 session-archive:
   summary: Keep each run's redacted transcript and a run record in the private archive repository config.yml names in sessions.archive (docs/memory.md). Does nothing until sessions.archive is set.
   stages: [all]

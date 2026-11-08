@@ -38,10 +38,12 @@
   },
   "flag_sources": {
     "session-archive": "config.yml features.off",
+    "skill-sources": "config.yml features.off",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
     "session-archive": false,
+    "skill-sources": false,
     "spec-auto-advance": false
   },
   "item": "",

@@ -39,6 +39,8 @@ on:
         required: false
       FACTORY_READ_TOKEN:
         required: false
+      # Read access to private skill sources in the repository's .agents/skills.lock (skill-sources flag).
+      FACTORY_SKILLS_TOKEN:
       FACTORY_ARCHIVE_KEY: # encrypts a public repository's transcript between the agent and archive jobs
         required: false
 
@@ -76,6 +78,7 @@ jobs:
       archive: ${{ steps.prepare.outputs.archive }}
       factory_repo: ${{ steps.factory.outputs.repo }}
       factory_sha: ${{ steps.factory.outputs.sha }}
+      skills: ${{ steps.skills.outputs.count }}
     steps:
       # github.workflow_sha is the caller's commit, not the factory's. The OIDC token's
       # job_workflow_ref and job_workflow_sha name this workflow's own repository and commit.
@@ -125,6 +128,43 @@ jobs:
           factory_ref: ${{ steps.factory.outputs.ref }}
           token: ${{ github.token }}
 
+      # Skills from the repository's other sources (.agents/skills.lock), fetched here so the agent job
+      # never holds FACTORY_SKILLS_TOKEN. This runs the factory's copy of sync-skills.sh, never the
+      # repository's: this job has tokens, and the checkout is the trusted base for pull_request_target.
+      - name: Skill sources
+        id: skills
+        if: >-
+          steps.prepare.outputs.run == 'true' && steps.prepare.outputs.agent == 'true' &&
+          fromJSON(steps.prepare.outputs.plan).flags['skill-sources'] && hashFiles('.agents/skills.lock') != ''
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_SKILLS_TOKEN }}
+          AGENT_SKILLS_CACHE: ${{ runner.temp }}/agent-skills
+          AGENT_SKILLS_SOURCES_DIR: ${{ runner.temp }}/no-siblings
+        run: |
+          set -uo pipefail
+          if ! bash .factory/templates/repo/sync-skills.sh --strict; then
+            echo "::warning::Some skill sources in .agents/skills.lock could not be synced; the agent runs without them. A private source needs FACTORY_SKILLS_TOKEN."
+          fi
+          out="$RUNNER_TEMP/skill-sources" n=0
+          mkdir -p "$out"
+          for d in .claude/skills/*/; do
+            d="${d%/}"
+            if head -1 "$d/.gitignore" 2>/dev/null | grep -q '^# agent-skills: synced'; then
+              cp -R "$d" "$out/" && n=$((n + 1)) && echo "synced $(basename "$d")"
+            fi
+          done
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+          { echo "### Skill sources"; echo; echo "$n skill(s) from .agents/skills.lock for the agent job."; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload skill sources
+        if: steps.skills.outputs.count != '' && steps.skills.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-skills-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/skill-sources/
+          include-hidden-files: true
+          retention-days: 1
+
   agent:
     name: agent
     needs: plan
@@ -164,6 +204,29 @@ jobs:
           factory_repo: ${{ needs.plan.outputs.factory_repo }}
           factory_sha: ${{ needs.plan.outputs.factory_sha }}
           token: ${{ github.token }}
+
+      - name: Download skill sources
+        if: needs.plan.outputs.skills != '' && needs.plan.outputs.skills != '0'
+        uses: actions/download-artifact@v4
+        with:
+          name: factory-skills-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/skill-sources
+
+      # A factory skill or one the repository commits keeps its name: skill sources only add skills.
+      # Each synced folder carries its own .gitignore, so none of them reaches the agent's commits.
+      - name: Add skill sources
+        if: needs.plan.outputs.skills != '' && needs.plan.outputs.skills != '0'
+        run: |
+          set -euo pipefail
+          mkdir -p .claude/skills
+          for d in "$RUNNER_TEMP"/skill-sources/*/; do
+            name="$(basename "$d")"
+            if [ -e ".claude/skills/$name" ]; then
+              echo "kept     .claude/skills/$name (the factory's or the repository's)"
+            else
+              cp -R "${d%/}" ".claude/skills/$name" && echo "added    .claude/skills/$name"
+            fi
+          done
 
       - name: Stage inputs
         if: hashFiles(format('.factory/stages/{0}/pre.sh', inputs.stage)) != ''
