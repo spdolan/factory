@@ -45,6 +45,16 @@ Runs fetch the factory's skills, scripts and configuration. A public factory nee
 
 `factory rotate-secrets` puts it on every consuming repository. Only the checkout step uses it; agents never see it. Also run `scripts/factory protect` in the factory, which sets **Settings → Actions → General → Access** so your other repositories may call its reusable workflows.
 
+### FACTORY_SKILLS_TOKEN (only for private skill sources)
+
+A repository that pins skills from other repositories (`factory skills add`, the `skill-sources` flag) needs this only when a source is private:
+
+1. **Name:** `factory-skills`. **Expiration:** the longest allowed, with a calendar reminder.
+2. **Repository access:** only the source repositories listed in `.agents/skills.lock`.
+3. **Repository permissions:** Contents: Read. Nothing else.
+
+Set it on the repository (`factory rotate-secrets` sets it everywhere when it's exported), and run `factory update` so the stubs pass it. Only the plan job's skill-sources step uses it; agents never see it. In a claude.ai cloud environment, add the source repositories under **Repositories** instead: sessions copy from that checkout.
+
 ### Claude credentials
 
 Use one of these:

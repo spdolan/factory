@@ -128,6 +128,10 @@ Merging the release-please PR is the promotion. Until then, merged work runs onl
 - **CI.** `prepare` copies `.factory/skills/<name>` into `.claude/skills/<name>`, so existing paths keep working. The consuming repository gitignores the factory-managed skill directories and `.factory/`.
 - **Overrides.** A factory skill the repository has committed (`git ls-files .claude/skills/<name>`) is the repository's own fork. `prepare` leaves it alone and says so. Repository-owned skills, such as `review-pr-local`, aren't touched.
 - **Interactive sessions and `factory-local`.** A SessionStart hook in the repository's `.claude/settings.json`, added by `factory install`, reads the ref from a stub and copies that version's skills in. It downloads them anonymously from a public factory, or with your `gh` login from a private one (a claude.ai cloud session then needs the factory attached), and skips the download if the skills are already current. It runs nothing it downloaded: the hook copies the files itself.
+- **Other skill sources** (flag `skill-sources`, preview). A repository can pin skills from other repositories in its own `.agents/skills.lock` (one line per source: `<owner/repo> <ref> <sha> <select>`), so the factory still names none. `factory skills add <owner/repo> <ref> [select]` installs `.agents/sync-skills.sh` from the factory (`factory update` keeps it at the factory's version) and pins the ref's commit.
+  - **Sessions.** The SessionStart hook copies the factory's skills, then runs the repository's committed `sync-skills.sh`, so factory skills win a name clash. Synced folders carry their own `.gitignore`, so they never reach a commit.
+  - **CI.** With the flag on, the plan job runs the factory's copy of `sync-skills.sh` (never the repository's: that job holds tokens) against the trusted checkout, with `FACTORY_SKILLS_TOKEN` for private sources. It uploads the synced folders as an artifact. The agent job adds each one whose name isn't taken by a factory skill or a committed fork, and never holds that token. A source that can't be fetched is a warning, not a failed run.
+  - **The factory isn't a line in the lock.** Its version is the stubs' ref (§3), and CI uses exactly that commit, so a second pin in the lock would drift from it.
 - **The improve-review loop writes only `review-pr-local`**, starting in phase 0.
 
 ### 5. Each repository's settings live in that repository
@@ -310,6 +314,7 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
 | `FACTORY_GITHUB_TOKEN` | each repository | unchanged; never includes the factory. Gains Workflows: write only once agents no longer hold it (§6.3) |
 | `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` | each repository | unchanged |
 | `FACTORY_READ_TOKEN` | each repository, **only while the factory is private** | fine-grained, the factory only, Contents: read. Set and renewed by `factory rotate-secrets` |
+| `FACTORY_SKILLS_TOKEN` (optional) | each repository with private sources in `.agents/skills.lock` | fine-grained, those source repositories only, Contents: read. Used by the plan job's skill-sources step alone (§4); agents never see it |
 | `FACTORY_PRIVATE_NAMES` (optional) | the factory | names `check-references.sh` must never find, kept out of the code (it matters most if the factory goes public) |
 | `FACTORY_RELEASE_APP_CLIENT_ID`, `FACTORY_RELEASE_APP_PRIVATE_KEY` | the factory | a GitHub App you own, installed on the factory only: the one actor that may create or move `v*` tags. Used by the release workflow alone; no agent runs in the factory's CI |
 

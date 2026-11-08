@@ -26,7 +26,7 @@ BASE = {
     "repository": "acme/app", "server_url": "https://github.com", "run_id": "99",
     "factory": {"repo": "acme/factory", "sha": "a" * 40, "ref": "refs/tags/v0.2", "release": "v0.2.0"},
     "tags": {"v0.2": "a" * 40, "v0.2.0": "a" * 40},
-    "config": {"features": {"off": ["spec-auto-advance"]}},
+    "config": {"features": {"off": ["spec-auto-advance", "skill-sources"]}},
 }
 PR = {"number": 3, "labels": [], "state": "open", "draft": False, "head_ref": "feat/x",
       "base_sha": "1" * 40, "head_sha": "2" * 40, "changed_lines": 120}
@@ -44,10 +44,10 @@ CASES = {
                              item={"number": 7, "labels": ["ready-to-spec", "factory:local"]}),
     "implement-autonomous-verify": dict(stage="implement", event_name="workflow_dispatch", params={"issue_number": 7},
                                         item={"number": 7, "labels": ["ready-to-implement", "factory:agent"]},
-                                        config={"verify": True, "features": {"off": ["spec-auto-advance"]}}),
+                                        config={"verify": True, "features": {"off": ["spec-auto-advance", "skill-sources"]}}),
     "implement-config-local": dict(stage="implement", event_name="issues", event={"action": "labeled", "label": {"name": "ready-to-implement"}},
                                    item={"number": 8, "labels": ["ready-to-implement"]},
-                                   config={"stages": {"implement": {"runtime": "local"}}, "features": {"off": ["spec-auto-advance"]}}),
+                                   config={"stages": {"implement": {"runtime": "local"}}, "features": {"off": ["spec-auto-advance", "skill-sources"]}}),
     "implement-wrong-label": dict(stage="implement", event_name="issues", event={"action": "labeled", "label": {"name": "factory:approved"}},
                                   item={"number": 8, "labels": ["ready-to-spec", "factory:approved"]}),
     "review-small": dict(stage="review", event_name="pull_request_target", event={"action": "opened"}, item=PR),
@@ -246,7 +246,7 @@ class Updates(unittest.TestCase):
         c["config"] = {"features": {"preview": "all"}}
         c["factory"]["ref"] = "refs/heads/main"
         u = plan.resolve(c)["update"]
-        self.assertEqual((u["needed"], u["newer_line"], u["pending"]), (True, None, ["spec-auto-advance"]))
+        self.assertEqual((u["needed"], u["newer_line"], u["pending"]), (True, None, ["spec-auto-advance", "skill-sources"]))
 
     def test_check_false(self):
         c = ctx("update-newer-line")
