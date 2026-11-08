@@ -22,7 +22,7 @@ jobs:
           ./actionlint -color templates/github/workflows/*.yml .github/workflows/*.yml
 
       - name: Lint scripts
-        run: shellcheck scripts/*.sh scripts/factory templates/repo/materialize.sh stages/*/pre.sh
+        run: shellcheck scripts/*.sh scripts/factory templates/repo/materialize.sh templates/repo/sync-skills.sh stages/*/pre.sh
 
       # The factory names no other repository. FACTORY_PRIVATE_NAMES (optional secret)
       # lists bare names to look for without writing them into this public repository.
@@ -110,3 +110,18 @@ jobs:
           after="$(cd "$tmp" && find . -path ./.git -prune -o -type f -print0 | sort -z | xargs -0 shasum)"
           [ "$before" = "$after" ] || { echo "second install changed files"; exit 1; }
           (cd "$tmp" && "$factory" update) | grep -qx 'Nothing changed.'
+          # Skill sources: pin one of this factory's own skills as another source (a skills/ layout),
+          # so the test names no other repository. The CLI installs this checkout's sync-skills.sh.
+          (cd "$tmp" && "$factory" skills add "$GITHUB_REPOSITORY" main triage) > skills.log
+          test -x "$tmp/.agents/sync-skills.sh"
+          grep -Eq "^$GITHUB_REPOSITORY +main +[0-9a-f]{40} +triage$" "$tmp/.agents/skills.lock"
+          test -f "$tmp/.claude/skills/triage/SKILL.md"
+          head -1 "$tmp/.claude/skills/triage/.gitignore" | grep -q '^# agent-skills: synced'
+          [ -z "$(git -C "$tmp" status --porcelain -- .claude)" ] || { echo "synced skills aren't ignored"; exit 1; }
+          # update keeps the repository's copy of sync-skills.sh at this version's.
+          echo "# local drift" >> "$tmp/.agents/sync-skills.sh"
+          (cd "$tmp" && "$factory" update) > update3.log
+          grep -q 'update   .agents/sync-skills.sh' update3.log
+          cmp templates/repo/sync-skills.sh "$tmp/.agents/sync-skills.sh"
+          # The session hook runs it after copying the factory's skills.
+          grep -q '.agents/sync-skills.sh' "$tmp/.github/factory/materialize.sh"

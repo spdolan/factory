@@ -46,9 +46,11 @@
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "flag_sources": {
+    "skill-sources": "config.yml features.off",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
+    "skill-sources": false,
     "spec-auto-advance": false
   },
   "item": 7,

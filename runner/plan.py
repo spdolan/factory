@@ -30,7 +30,7 @@ RUNTIMES = ["actions", "local"]
 CONDITIONS = ["autonomous", "risk", "small_change", "breaking"]
 APPLY_OPS = ["set-state", "add-markers", "route", "comment", "open-pr", "publish-review", "create-items",
              "open-breaking-issue", "notify-consumers", "clear-gate", "open-update-issue"]
-SECRETS = ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "FACTORY_GITHUB_TOKEN", "FACTORY_READ_TOKEN"]
+SECRETS = ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "FACTORY_GITHUB_TOKEN", "FACTORY_READ_TOKEN", "FACTORY_SKILLS_TOKEN"]
 PERMISSION_ORDER = ["contents", "issues", "pull-requests", "packages", "actions", "id-token"]
 SAFE = re.compile(r"^[A-Za-z0-9._:/@+-]+$")
 
