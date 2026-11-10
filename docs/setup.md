@@ -1,6 +1,6 @@
 # Setting up a repository
 
-Install the factory's stubs into the repository, then give its workflows credentials and settings with the factory's CLI, [`scripts/factory`](../scripts/factory). The manual steps below do the same thing.
+Install the factory's stubs into the repository, then give its workflows credentials and settings with the factory's CLI, [`scripts/factory`](../scripts/factory). The manual steps below do the same thing. The [`factory-setup`](../skills/factory-setup/SKILL.md) skill walks an agent through this page in an interactive session: it runs the CLI, drafts `FACTORY.md` and `config.yml` from the repository, and leaves the tokens and settings to you.
 
 ```bash
 ~/code/factory/scripts/factory install            # stubs call the line tag of your checkout, e.g. @v0.2

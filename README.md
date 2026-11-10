@@ -98,6 +98,7 @@ Commits name the model that made them, for example `Co-Authored-By: Claude Haiku
 | `review-pr` | Writes `review.json`; a separate job publishes it | Ported, with scripts |
 | `improve-review-pr` | Outer loop that learns from your reactions to reviews | Ported, with collector |
 | `dependency-bump` | Moves a pin to a new non-breaking release of an internal library | New |
+| `factory-setup` | None: a person runs it (`/factory-setup`) to install, migrate or update the factory in a repository and draft `FACTORY.md` and `config.yml`; stages never load it | New |
 
 ## Workflows
 
@@ -122,7 +123,7 @@ Releases come from [release-please](https://github.com/googleapis/release-please
 
 ## Set up a repository
 
-The short path. [docs/setup.md](docs/setup.md) has the details and the manual equivalents.
+The short path. [docs/setup.md](docs/setup.md) has the details and the manual equivalents. To have an agent walk you through it, start a session at the repository's root and ask it to follow `~/code/factory/skills/factory-setup/SKILL.md`; once installed, the repository has it as `/factory-setup` for migrations and updates.
 
 1. **Install the stubs**, from the root of the repository, on a new branch:
 
