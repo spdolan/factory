@@ -616,6 +616,9 @@ def resolve(ctx: dict, root: Path = FACTORY_ROOT) -> dict:
         values["output"] = render_prompt(out_file.read_text(), values, str(out_file)).strip() if out_file.exists() else ""
         prompt_file = root / "stages" / name / "prompt.md"
         plan["prompt"] = render_prompt(prompt_file.read_text(), values, f"stages/{name}/prompt.md").strip() + "\n"
+        note = tools_note(plan["agent"]["allowed_tools"].split(","))
+        if note:
+            plan["prompt"] += "\n" + note + "\n"
     else:
         plan["prompt"] = ""
 
@@ -645,6 +648,26 @@ def resolve(ctx: dict, root: Path = FACTORY_ROOT) -> dict:
     plan["flag_sources"] = flag_why
     plan["run"], plan["reason"] = (skip is None), (skip or why)
     return plan
+
+
+def tools_note(tools: list[str]) -> str:
+    """Tell an agent whose shell is limited what it may run. Without this, agents spend turns on
+    commands the permission check denies: anything not matching an allowed pattern, which
+    includes chaining (&&, ;, |) and redirection even when each part would be allowed."""
+    tools = [t for t in tools if t]
+    if "Bash" in tools:
+        return ""
+    allowed = [t[len("Bash("):-1].removesuffix(":*") for t in tools if t.startswith("Bash(")]
+    others = [t for t in tools if not t.startswith("Bash(")]
+    lines = [f"Your tools in this run: {', '.join(f'`{t}`' for t in others) or 'none besides the commands below'}."]
+    if allowed:
+        lines.append("Bash runs only commands that start with one of these, one command per call, with no "
+                     "`&&`, `;`, pipes or redirection: " + ", ".join(f"`{c}`" for c in allowed) + ".")
+    else:
+        lines.append("There is no shell.")
+    lines.append("Read and list files with Read, Glob and Grep, not with `cat` or `ls`. Any other command is denied "
+                 "and costs a turn.")
+    return " ".join(lines)
 
 
 def session_archive(repo: str, archive: str, flag_on: bool, runtime: str, has_agent: bool) -> dict:

@@ -28,6 +28,7 @@ ENV = {"FACTORY_GITHUB_TOKEN": "s3cret-value-1234", "CLAUDE_CODE_OAUTH_TOKEN": "
 PLAN = {"stage": "review", "item": 3, "item_kind": "pr", "trigger": "pull_request_target opened",
         "factory": {"repo": "acme/factory", "sha": "a" * 40, "ref": "main", "release": ""},
         "agent": {"tier": "fast", "model": "claude-haiku-5-5", "effort": "medium"},
+        "sources": {"agent.tier": "pipeline.yaml when.small_change"},
         "conditions": ["small_change"], "flags": {"session-archive": True, "spec-auto-advance": False},
         "apply": ["publish-review"], "sessions": {"archive": "acme/factory-sessions", "encrypt": False}}
 MESSAGES = [
@@ -71,6 +72,30 @@ class Redaction(unittest.TestCase):
         red = archive.Redactor([])
         out = red.text("a\n-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\nb")
         self.assertEqual(out, "a\n[REDACTED:private-key]\nb")
+
+
+class Opaque(unittest.TestCase):
+    def test_empty_thinking_and_signatures_are_dropped(self):
+        msgs = [{"type": "assistant", "message": {"content": [
+                    {"type": "thinking", "thinking": "", "signature": "CAQS" + "x" * 500},
+                    {"type": "thinking", "thinking": "plan the review", "signature": "CAQS" + "y" * 500},
+                    {"type": "redacted_thinking", "data": "z" * 100},
+                    {"type": "text", "text": "done"}]}},
+                {"type": "system", "subtype": "init", "message": "not a dict"}]
+        self.assertEqual(archive.drop_opaque(msgs), 2)
+        self.assertEqual(msgs[0]["message"]["content"], [{"type": "thinking", "thinking": "plan the review"},
+                                                         {"type": "text", "text": "done"}])
+
+    def test_redact_session_counts_them(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            (tmp / "exec.json").write_text(json.dumps([{"type": "assistant", "message": {"content": [
+                {"type": "thinking", "thinking": "", "signature": "s" * 50}, {"type": "text", "text": "hi"}]}}]))
+            blob, info = archive.redact_session(tmp / "exec.json", {})
+            self.assertEqual(info["redaction"]["opaque_blocks_dropped"], 1)
+            self.assertNotIn(b"signature", gzip.decompress(blob))
+        finally:
+            shutil.rmtree(tmp)
 
 
 class Loading(unittest.TestCase):
@@ -128,6 +153,7 @@ class Commands(unittest.TestCase):
         self.assertEqual(record["jobs"], {"agent": "success", "apply": "failure"})
         self.assertEqual(record["session"]["total_cost_usd"], 0.12)
         self.assertEqual(record["flags_on"], ["session-archive"])
+        self.assertEqual((record["tier"], record["model_from"]), ("fast", "pipeline.yaml when.small_change"))
         blob = (self.tmp / "out" / record["transcript"]).read_bytes()
         self.assertNotIn(TOKEN, gzip.decompress(blob).decode())
 
@@ -186,6 +212,12 @@ class ArchiveRepository(unittest.TestCase):
         with mock.patch.object(archive, "gh", side_effect=['{"message": "Resource not accessible", "status": "403"}', ""]), \
                 self.assertRaisesRegex(FactoryError, "Resource not accessible"):
             archive.put_file("acme/s", "runs/x.json", b"{}", "m", "t")
+
+    def test_model_set_by_id_has_no_tier(self):
+        plan = dict(PLAN, agent={"tier": "", "model": "claude-haiku-5-5", "effort": "medium"},
+                    sources={"agent.tier": "variable (when.small_change)"})
+        record = archive.run_record(plan, ENV, {}, None, {}, None)
+        self.assertEqual((record["tier"], record["model_from"]), (None, "variable (when.small_change)"))
 
     def test_paths(self):
         self.assertEqual(archive.archive_paths(dict(PLAN, item=""), ENV),

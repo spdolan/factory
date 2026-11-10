@@ -184,7 +184,9 @@ def run_record(plan: dict, env: dict, stats: dict, result: dict | None, redactio
         "archived_at": env.get("FACTORY_NOW") or dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "factory": {k: (plan.get("factory") or {}).get(k) for k in ("repo", "sha", "ref", "release")},
         "plan_hash": hashlib.sha256(canonical.encode()).hexdigest()[:12],
-        "tier": agent.get("tier"), "model": agent.get("model"), "effort": agent.get("effort"),
+        # tier is null when the model was set by ID (a variable or config.yml); model_from says where.
+        "tier": agent.get("tier") or None, "model": agent.get("model"), "effort": agent.get("effort"),
+        "model_from": (plan.get("sources") or {}).get("agent.tier"),
         "conditions": plan.get("conditions") or [],
         "flags_on": sorted(k for k, v in (plan.get("flags") or {}).items() if v),
         "apply_ops": plan.get("apply") or [],
@@ -204,14 +206,40 @@ def archive_paths(plan: dict, env: dict) -> tuple[str, str]:
     return (f"sessions/{name}/{yyyy}/{mm}/{stem}.jsonl.gz", f"runs/{name}/{yyyy}/{mm}/{stem}.json")
 
 
+def drop_opaque(messages: list) -> int:
+    """Remove what no reader can use, in place: thinking blocks with no text, redacted_thinking
+    blocks, and the signatures on thinking blocks. A thinking block with text keeps its text.
+    Returns the number of blocks removed."""
+    dropped = 0
+    for m in messages:
+        msg = m.get("message") if isinstance(m, dict) else None
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, list):
+            continue
+        kept = []
+        for c in content:
+            if isinstance(c, dict) and (c.get("type") == "redacted_thinking"
+                                        or (c.get("type") == "thinking" and not str(c.get("thinking") or "").strip())):
+                dropped += 1
+                continue
+            if isinstance(c, dict) and c.get("type") == "thinking":
+                c.pop("signature", None)
+            kept.append(c)
+        msg["content"] = kept
+    return dropped
+
+
 def redact_session(execution: Path | None, env: dict) -> tuple[bytes | None, dict]:
     """(compressed redacted transcript or None, session info: stats and what redaction did)."""
     red = Redactor(known_secrets(env))
-    messages = []
+    messages, opaque = [], 0
     if execution and execution.exists():
-        messages = red.value(load_messages(execution.read_text(errors="replace")))
+        messages = load_messages(execution.read_text(errors="replace"))
+        opaque = drop_opaque(messages)
+        messages = red.value(messages)
     blob = to_jsonl_gz(messages) if messages else None
-    info = {"stats": session_stats(messages), "redaction": {"counts": red.counts, "truncated_strings": red.truncated}}
+    info = {"stats": session_stats(messages),
+            "redaction": {"counts": red.counts, "truncated_strings": red.truncated, "opaque_blocks_dropped": opaque}}
     if blob is not None and len(blob) > MAX_ARCHIVE_BYTES:
         info["redaction"]["note"] = f"transcript not kept: {len(blob)} compressed bytes is over the {MAX_ARCHIVE_BYTES} limit"
         blob = None
@@ -281,7 +309,8 @@ def summary_lines(archive: str, record: dict, paths: tuple[str, str], pushed: bo
     lines = ["### Session archive", "", f"- Archive: {where}",
              f"- Transcript: `{paths[0]}`" if record["transcript"] else "- Transcript: none",
              f"- Run record: `{paths[1]}`",
-             f"- Redacted: {red}; {record['redaction'].get('truncated_strings', 0)} long strings cut"]
+             f"- Redacted: {red}; {record['redaction'].get('truncated_strings', 0)} long strings cut; "
+             f"{record['redaction'].get('opaque_blocks_dropped', 0)} empty thinking blocks dropped"]
     if record["redaction"].get("note"):
         lines.append(f"- {record['redaction']['note']}")
     return lines

@@ -179,14 +179,21 @@ Step 1 is worth shipping first even if the rest waits: history that wasn't kept 
 
 To answer in the test repository before relying on them:
 
-1. What does `execution_file` contain on v1.0.245: thinking, full tool results, the prompt? How large is a typical run's file?
-2. How much does redaction catch on real transcripts? Run it over the test repository's next runs and read the output before anything is pushed.
-3. Does `FACTORY_GITHUB_TOKEN` with Contents: write on the archive work alongside its existing scopes without other changes?
+1. ~~What does `execution_file` contain on v1.0.245?~~ Answered by the first archived run (a review, 2026-11-10). It holds:
+   - the init message (tools, cwd, model)
+   - the SessionStart hook's events
+   - every assistant message, with each tool call's full input and its full result
+   - permission denials with their reasons
+   - the final result
+
+   Thinking blocks arrive with no text, only an opaque signature, so the archive drops them (see decision 3). That run was 59 messages: 117 KB, or 32 KB gzipped.
+2. How much does redaction catch on real transcripts? The first run had nothing to catch: the agent never read its environment, and the scan found no tokens or keys. Keep reading the redaction counts in each run's summary.
+3. ~~Does `FACTORY_GITHUB_TOKEN` with Contents: write on the archive work alongside its existing scopes?~~ Yes: adding the archive to the token's repositories was enough.
 
 ## Decisions for the owner
 
 1. **Private repositories by default.** Keep no sessions until `sessions.archive` is set (proposed, matching public repositories), or use a conventional archive name like `<owner>/factory-sessions` when it exists and is private.
 2. **Retention.** Keep sessions forever, or prune those older than N days. Pruning still leaves them in git history, so a real purge means recreating the archive.
-3. **Thinking blocks.** Keep them in the archived transcript, or drop them to save space and limit what's stored.
+3. **Thinking blocks.** The archive keeps a thinking block's text when it has any, and drops empty blocks, `redacted_thinking` blocks and signatures, none of which a reader can use. Decide whether to drop thinking text too.
 4. **Dream replaces improve-review.** Proposed: yes, in step 3.
 5. **`FACTORY.md` promotions.** Suggestions in the PR description that you apply (proposed), or edits in the patch.
