@@ -82,11 +82,19 @@ Then set the secrets on every repository that has the topic, from anywhere:
 ```bash
 export FACTORY_GITHUB_TOKEN='<the fine-grained token>'
 export CLAUDE_CODE_OAUTH_TOKEN='<from claude setup-token>'
-~/code/factory/scripts/factory rotate-secrets --dry-run   # list where they would go
+~/code/factory/scripts/factory rotate-secrets --dry-run   # what it would set or skip, per repository
 ~/code/factory/scripts/factory rotate-secrets
 ```
 
-It sets only the secrets you exported, pipes each value to `gh` (never on a command line), writes nothing to disk, and lists every repository it updated. A repository missing from that list lacks the topic. To rotate a token, export the new value and run it again.
+It sets only the secrets you exported, pipes each value to `gh` (never on a command line), writes nothing to disk, and lists every repository it updated. A repository missing from that list lacks the topic.
+
+A secret a repository already has is skipped, so adding a repository later only sets that repository's secrets, and each secret's last-updated time in GitHub still shows when it was last rotated. It reads the names with `gh secret list`, never the values, so it can't tell whether an existing secret holds the right token. To rotate a token, or to replace a wrong one, export the new value and run it with `--force`, or `--force NAME[,NAME…]` to rotate only those:
+
+```bash
+export CLAUDE_CODE_OAUTH_TOKEN='<the new token>'
+~/code/factory/scripts/factory rotate-secrets --force CLAUDE_CODE_OAUTH_TOKEN --dry-run
+~/code/factory/scripts/factory rotate-secrets --force CLAUDE_CODE_OAUTH_TOKEN
+```
 
 ### Settings: `config.yml`
 

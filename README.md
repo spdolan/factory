@@ -166,7 +166,7 @@ The short path. [docs/setup.md](docs/setup.md) has the details and the manual eq
    ~/code/factory/scripts/factory rotate-secrets
    ```
 
-   It pipes each exported value to `gh`, writes nothing to disk, and lists the repositories it set. To rotate a token, export the new value and run it again.
+   It pipes each exported value to `gh`, writes nothing to disk, and lists the repositories it set. A secret a repository already has is skipped; to rotate a token, export the new value and run it with `--force NAME`.
 6. **Optional:** settings in `.github/factory/config.yml` (autonomy, model tiers, effort, flags, runtime; every key has a default). List it under Protected paths in `FACTORY.md`. Repository variables (`FACTORY_AUTONOMY`, `FACTORY_MODEL_*`, `FACTORY_EFFORT_*`) override it. Also `.github/factory/setup.sh` if agents need toolchains or registry credentials (it receives `GITHUB_PACKAGES_TOKEN`). If setup.sh installs a pinned Bun, it should also run `echo "FACTORY_BUN_PATH=$HOME/.bun/bin/bun" >> "$GITHUB_ENV"`, or the agent runs on the Bun that `claude-code-action` installs for itself.
 
 Commit the installed files and merge. Factory changes then reach the repository through the line its stubs call; a `factory:update` issue says when a newer line or a new flag is waiting, and `factory update --to v0.3` moves the stubs. A repository on 0.1 follows [MIGRATION.md](MIGRATION.md). The 0.1 copy mode (`scripts/install-factory.sh`) still works until phase 2 removes it.
@@ -179,7 +179,7 @@ This factory is public: consumers fetch it anonymously and rulesets are free. Th
 
 - **Rulesets on a private repository** need GitHub Pro (personal account) or Team (organization). On Free they return 403, and nothing on the server then stops a release tag from being moved.
 - **Calling its reusable workflows** (0.2) needs Settings → Actions → General → Access set to the owner's repositories (`scripts/factory protect` sets it). An organization gets the same setting for its repositories and can make the factory `internal` instead of private.
-- **Fetching it in runs** needs `FACTORY_READ_TOKEN` (fine-grained, the factory only, Contents: read) on each consumer, set by `scripts/factory rotate-secrets` and renewed before it expires; `doctor` reports it. An organization can set it once as an organization secret scoped to the consumers, or use a GitHub App installation token instead of a personal token.
+- **Fetching it in runs** needs `FACTORY_READ_TOKEN` (fine-grained, the factory only, Contents: read) on each consumer, set by `scripts/factory rotate-secrets` and renewed before it expires (`rotate-secrets --force FACTORY_READ_TOKEN`); `doctor` reports it. An organization can set it once as an organization secret scoped to the consumers, or use a GitHub App installation token instead of a personal token.
 - **Interactive sessions** fetch skills with your `gh` login instead of anonymously.
 
 The trade-offs are in [docs/rollout.md](docs/rollout.md#11-public-or-private).

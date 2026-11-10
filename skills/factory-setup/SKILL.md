@@ -95,7 +95,7 @@ export FACTORY_GITHUB_TOKEN='…'  CLAUDE_CODE_OAUTH_TOKEN='…'
 "$FACTORY_DIR/scripts/factory" rotate-secrets
 ```
 
-`rotate-secrets` only reaches repositories with the `factory` topic, so the topic must be set first.
+`rotate-secrets` only reaches repositories with the `factory` topic, so the topic must be set first. It skips a secret a repository already has, so it never overwrites another repository's secrets. If the user means to replace a token (expired, or the wrong one), give `rotate-secrets --force NAME` for that secret instead.
 
 ## 8. Verify and hand off
 

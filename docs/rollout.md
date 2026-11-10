@@ -263,7 +263,7 @@ Under `dry_run`, every stage skips its apply job. Implement and spec upload thei
 - **The mechanic.** Each repository declares on its own side that it consumes the factory, and the factory's CLI discovers consumers by that declaration. The factory never lists them, and there is no separate ops repository or infra state.
 - **The implementation on GitHub.** The declaration is a repository topic, `factory` (`FACTORY_TOPIC` overrides it). `gh repo list <owner> --topic factory` finds every consumer your login can see. A host other than GitHub would keep the mechanic and change only this detail.
 - **`factory doctor [--fix]`**, run inside a repository, checks and repairs its declaration, labels and Actions settings, reports its secrets, and with `--protect-default-branch` its default-branch ruleset. It reports drift one repository at a time; there is no fleet-wide plan.
-- **`factory rotate-secrets`** sets each exported secret on every declared repository and prints the list. A consumer missing from it lacks the declaration. Secret values are piped to `gh` and never stored, which removes the plaintext secrets that Terraform state held.
+- **`factory rotate-secrets`** sets each exported secret on every declared repository that lacks it (`--force` rotates it everywhere) and prints the list. A consumer missing from it lacks the declaration. Secret values are piped to `gh` and never stored, which removes the plaintext secrets that Terraform state held.
 - **Model, effort and autonomy settings** stay optional repository variables until 0.2, then move into each repository's `config.yml`.
 - **Labels** come from one file, `templates/labels.txt`, read by `doctor` and the installer. Workflows already create missing labels when they need them.
 
@@ -288,7 +288,7 @@ The factory is the most powerful repository you own, so:
 | `factory update [--to v0.3]` | exists. Renders stubs for a version and prints its `MIGRATION.md` entries for you to follow. A person runs it; the update stage that would run it is not built |
 | `factory try …` | §7. Not built |
 | `factory doctor [--fix]` | checks and repairs the consumer declaration, labels and Actions settings, and reports secrets; also checks the config schema and whether the stubs match the version they call. Exists |
-| `factory rotate-secrets` | sets exported secrets on every declared consumer. Exists today |
+| `factory rotate-secrets` | sets exported secrets on every declared consumer that lacks them; `--force [NAME]` rotates. Exists today |
 | `factory protect` | run inside the factory: rulesets on `main` and `v*` tags. Exists today |
 | `factory materialize` | exists. What the agent and apply jobs run; the SessionStart hook makes the same copy without running fetched code |
 | `factory tracker …` | exists. The only code that talks to the work tracker ([pipeline.md](pipeline.md)) |
@@ -299,7 +299,7 @@ The design works either way. The factory names no other repository, so going pub
 
 | | Public | Private |
 |---|---|---|
-| Fetching the factory in CI | anonymous | `FACTORY_READ_TOKEN` in each repository, set and renewed by `factory rotate-secrets`; when it expires, every repository's runs stop until it is renewed |
+| Fetching the factory in CI | anonymous | `FACTORY_READ_TOKEN` in each repository, set and renewed by `factory rotate-secrets` (`--force FACTORY_READ_TOKEN` to renew); when it expires, every repository's runs stop until it is renewed |
 | Calling its reusable workflows | works | needs Settings → Actions → General → Access set to the owner's repositories (`factory protect` sets it); whether a personal account offers this was open question 5 |
 | Rulesets on `main` and `v*` tags | free | need GitHub Pro or higher; without them only the local deny list stops a tag being moved |
 | Interactive sessions fetching skills | anonymous | your `gh` login; claude.ai cloud sessions need the factory attached |
@@ -314,7 +314,7 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
 |---|---|---|
 | `FACTORY_GITHUB_TOKEN` | each repository | unchanged; never includes the factory. Gains Workflows: write only once agents no longer hold it (§6.3) |
 | `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` | each repository | unchanged |
-| `FACTORY_READ_TOKEN` | each repository, **only while the factory is private** | fine-grained, the factory only, Contents: read. Set and renewed by `factory rotate-secrets` |
+| `FACTORY_READ_TOKEN` | each repository, **only while the factory is private** | fine-grained, the factory only, Contents: read. Set by `factory rotate-secrets`, renewed with `--force FACTORY_READ_TOKEN` |
 | `FACTORY_SKILLS_TOKEN` (optional) | each repository with private sources in `.agents/skills.lock` | fine-grained, those source repositories only, Contents: read. Used by the plan job's skill-sources step alone (§4); agents never see it |
 | `FACTORY_ARCHIVE_KEY` | each **public** repository that keeps sessions ([memory.md](memory.md)) | a random value, not a token: encrypts the transcript between the agent and archive jobs, since a public repository's artifacts can be downloaded by anyone signed in |
 | `FACTORY_PRIVATE_NAMES` (optional) | the factory | names `check-references.sh` must never find, kept out of the code (it matters most if the factory goes public) |
