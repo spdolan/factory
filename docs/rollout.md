@@ -274,6 +274,7 @@ The factory is the most powerful repository you own, so:
 - **Rulesets**, set with `scripts/factory protect`, run inside the factory:
   - On `main`: changes only through a PR, no force pushes, no deletion.
   - Rulesets are free on a public repository; a private one needs GitHub Pro or higher (§11).
+  - Rulesets are host-enforced: they bind every actor, including your own sessions and a buggy factory release. Most of the factory's other rules are factory-enforced and bind only what the factory does. The README's "Who enforces a rule" section draws the line, and auto-merge offers both kinds ([auto-merge.md](auto-merge.md#two-enforcement-modes)).
   - On `refs/tags/v*`: only the release workflow's GitHub App may create, move or delete tags (open question 4: the GitHub Actions app can't be a bypass actor on a personal account). There is no bypass for admins, because local sessions run with your login, which is an admin. Roll back through the workflow's `rollback` input.
 - **No agent token covers the factory.**
 - **Pull requests from forks** run only the factory's own CI, which never uses `pull_request_target`. Its only secret, `FACTORY_PRIVATE_NAMES`, is empty on fork PRs, so that check is skipped for them and runs again on `main`.
