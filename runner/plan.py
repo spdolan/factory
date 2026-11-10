@@ -34,6 +34,7 @@ SECRETS = ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "FACTORY_GITHUB_TOKEN
 PERMISSION_ORDER = ["contents", "issues", "pull-requests", "packages", "actions", "id-token"]
 SAFE = re.compile(r"^[A-Za-z0-9._:/@+-]+$")
 REPO_NAME = re.compile(r"^[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$")
+BOT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*(\[bot\])?$")  # a GitHub login; no "*" (allow every bot)
 
 # --- stubs -------------------------------------------------------------------------------------
 
@@ -184,7 +185,7 @@ def validate_config(cfg, pipeline: dict, features: dict) -> tuple[list[str], lis
     cfg = norm_config(cfg)
     if not isinstance(cfg, dict):
         return ["config.yml must be a mapping"], w
-    top = {"autonomy", "verify", "features", "updates", "tiers", "stages", "runtimes", "effort", "sessions"}
+    top = {"autonomy", "verify", "features", "updates", "tiers", "stages", "runtimes", "effort", "sessions", "dependencies"}
     for k in cfg:
         if k not in top:
             p.append(f"unknown key '{k}'")
@@ -262,6 +263,15 @@ def validate_config(cfg, pipeline: dict, features: dict) -> tuple[list[str], lis
             p.append(f"unknown key 'sessions.{k}'")
         elif not isinstance(v, str) or not REPO_NAME.match(v):
             p.append("sessions.archive must be a repository, owner/name")
+    deps = cfg.get("dependencies") or {}
+    if not isinstance(deps, dict):
+        p.append("dependencies must be a mapping (bots)")
+        deps = {}
+    for k, v in deps.items():
+        if k != "bots":
+            p.append(f"unknown key 'dependencies.{k}'")
+        elif not isinstance(v, list) or not all(isinstance(b, str) and BOT_NAME.match(b) for b in v):
+            p.append("dependencies.bots must be a list of GitHub account names, e.g. my-app[bot]")
     loc = ((cfg.get("runtimes") or {}).get("local") or {})
     for k in loc:
         if k not in ("setting_sources", "work_dir"):
@@ -636,6 +646,9 @@ def resolve(ctx: dict, root: Path = FACTORY_ROOT) -> dict:
     # On a public repository anyone signed in can download the run's artifacts, so the transcript
     # crosses from the agent job to the archive job encrypted (docs/memory.md part 1).
     plan["sessions"]["encrypt"] = bool(plan["sessions"]["archive"]) and ctx.get("private") is not True
+    bots, bot_why = allowed_bots(pipeline, settings, flags)
+    plan["allowed_bots"] = ",".join(bots)
+    src["allowed_bots"] = ", ".join(sorted(set(bot_why.values()), key=list(bot_why.values()).index))
     plan["update"] = update_check(ctx, settings, features, undecided)
     if plan["update"]["needed"] and runtime != "local":
         apply_ops.append("open-update-issue")
@@ -648,6 +661,24 @@ def resolve(ctx: dict, root: Path = FACTORY_ROOT) -> dict:
     plan["flag_sources"] = flag_why
     plan["run"], plan["reason"] = (skip is None), (skip or why)
     return plan
+
+
+def allowed_bots(pipeline: dict, settings: dict, flags: dict) -> tuple[list[str], dict]:
+    """Bot accounts whose events may start the agent: the pipeline's, a flag's, then config.yml's."""
+    bots = pipeline.get("bots") or {}
+    out, why = [], {}
+    for key, names in bots.items():
+        if key != "allowed" and not flags.get(key):
+            continue
+        for b in names:
+            if b not in out:
+                out.append(b)
+                why[b] = "pipeline.yaml" if key == "allowed" else f"flag {key}"
+    for b in ((settings.get("dependencies") or {}).get("bots") or []):
+        if b not in out:
+            out.append(b)
+            why[b] = "config.yml dependencies.bots"
+    return out, why
 
 
 def tools_note(tools: list[str]) -> str:
@@ -754,6 +785,7 @@ def summary(plan: dict) -> str:
             rows += [("model", f"{a['model']} ({a['tier'] or 'model ID'})", plan["sources"].get("agent.tier")),
                      ("effort", a["effort"], plan["sources"].get("agent.effort")), ("max turns", a["max_turns"], "pipeline.yaml"),
                      ("tools", a["allowed_tools"], "pipeline.yaml tool_profiles")]
+            rows += [("allowed bots", plan["allowed_bots"], plan["sources"].get("allowed_bots"))]
         rows += [("autonomy", plan["autonomy"]["policy"], plan["sources"].get("autonomy")),
                  ("apply", ", ".join(plan["apply"]) or "none", "pipeline.yaml")]
         out += ["| | value | from |", "|---|---|---|"] + [f"| {k} | `{v}` | {s or ''} |" for k, v, s in rows]
@@ -847,7 +879,7 @@ def cmd_plan(args) -> int:  # pragma: no cover - IO
                       "work_dir": (plan.get("local") or {}).get("work_dir", ""),
                       "session_name": (plan.get("local") or {}).get("session_name", ""),
                       "worktree": (plan.get("local") or {}).get("worktree", ""),
-                      "allowed_tools": a.get("allowed_tools", ""),
+                      "allowed_tools": a.get("allowed_tools", ""), "allowed_bots": plan["allowed_bots"],
                       "archive": (plan.get("sessions") or {}).get("archive", ""), "gate_awaiting": load_pipeline()["gate"]["awaiting"]}
             for k, v in simple.items():
                 fh.write(f"{k}={v}\n")

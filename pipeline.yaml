@@ -44,6 +44,11 @@ kinds:                         # labels that say what an item is
 runtime_labels:                # a label on an item that picks its runtime
   factory:local: local
 
+bots:                          # bot accounts whose events may start an agent (claude-code-action `allowed_bots`)
+  allowed: [github-actions, "github-actions[bot]", "claude[bot]", "dependabot[bot]"]
+  dependency-bots: ["renovate[bot]"]   # added while the dependency-bots flag is on
+                               # config.yml dependencies.bots adds more; nothing removes these
+
 autonomy:                      # who advances an issue after triage; config.yml `autonomy` picks the policy
   default: standard
   policies:

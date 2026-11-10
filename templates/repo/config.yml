@@ -34,6 +34,13 @@ updates:
 # sessions:
 #   archive: <owner>/<archive>
 
+# More bot accounts whose pull requests and comments may start a stage's agent, such as
+# the GitHub App a self-hosted Renovate run uses. These are added to the factory's own
+# list (github-actions, claude[bot], dependabot[bot], and renovate[bot] with the
+# dependency-bots flag); nothing here removes one.
+# dependencies:
+#   bots: [my-app[bot]]
+
 # Model tiers (fast, balanced, deep) mapped to model IDs.
 # tiers:
 #   fast: claude-sonnet-5-5
