@@ -171,6 +171,8 @@ run(stage, prompt, tier, effort, tools, output) → result | detached(session_id
 
 Every adapter gets the same prompt from `stages/<stage>/prompt.md` and the same tools from the profiles. The adapter decides only how to launch: `claude-code-action` inputs, `claude --bg` flags, or a session API call.
 
+**Skills on a pull request (`actions`).** On a pull request event, `claude-code-action` deletes `.claude/` and checks out only what the base branch tracks there before Claude Code starts. The skills the agent job copied into `.claude/skills/` are untracked, so that deletes them too, unless the repository commits a file under `.claude/skills/` that happens to cover them. So the agent job keeps a copy of `.claude/skills/` outside the checkout just before the agent step and gives the action a user-level SessionStart hook (`settings`, merged into `~/.claude/settings.json`, which the restore doesn't touch). The hook runs `runner/agent_skills.py restore` before the agent's first turn: it adds back every missing file and changes nothing the base branch put back. If the stage's skill is still missing after the agent step, "Collect the result" fails and says so.
+
 ### The tracker port
 
 `factory tracker` is a small script, the only code that talks to the work tracker:

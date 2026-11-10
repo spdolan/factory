@@ -8,6 +8,7 @@ file:       review.json is checked (a regular file, at most 4 MiB, a JSON object
             the diff) and copied to DIR/review.json.
 patch:      the JSON becomes DIR/result.json; for outcome `pr`, the commits on its branch since
             SHA become DIR/patch.bundle and the changed paths DIR/files.txt.
+Unless the agent was skipped, the stage's skill must still be in .claude/skills/ (agent_skills.py).
 Nothing here writes to GitHub. The apply job checks everything again before it does.
 """
 
@@ -23,6 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from agent_skills import check_skill  # noqa: E402
 from common import FactoryError, main_guard  # noqa: E402
 
 BRANCH = re.compile(r"^(?!-)(?!.*\.\.)[A-Za-z0-9._/-]{1,200}$")
@@ -73,6 +75,8 @@ def main() -> int:
         (out / "result.json").write_text(json.dumps(result))
         print("agent skipped")
         return 0
+
+    check_skill(Path.cwd(), (plan.get("agent") or {}).get("skill", ""))
 
     if kind == "file":
         source = Path(plan["output"]["file"])
