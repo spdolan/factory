@@ -1,6 +1,6 @@
 # Architecture at a glance
 
-Status: the 0.2 architecture, built on a branch and not yet released, as designed in [rollout.md](rollout.md) and [pipeline.md](pipeline.md). Not built yet: the update run in the second diagram (a human runs `factory update` on the `factory:update` issue), `contract.lock` and the single stub. In 0.1 the factory is copied into each repository by `scripts/install-factory.sh`, and that mode still works.
+Status: the 0.2 architecture, released as 0.2.0, as designed in [rollout.md](rollout.md) and [pipeline.md](pipeline.md). Not built yet: the update run in the second diagram (a human runs `factory update` on the `factory:update` issue), `contract.lock` and the single stub. In 0.1 the factory is copied into each repository by `scripts/install-factory.sh`, and that mode still works.
 
 ## Components
 
