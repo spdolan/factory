@@ -1,6 +1,6 @@
 # Rolling out factory changes
 
-Status: phase 0 shipped as v0.1.0 (2026-11-02). Phase 1 is built on one branch and ships as 0.2.0; it has not yet run from `@main` in the test repository. Phase 2 hasn't started. §6 and §7 describe more than 0.2 builds; the notes there say what. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md). The factory can stay private or go public (§11), versions stay below 1.0 so this architecture ships as a minor release, and repositories learn about updates through issues the factory opens during runs that happen anyway, not from a scheduled job. The companion [pipeline.md](pipeline.md) makes the stages themselves configuration. The design for merging low-risk PRs without a human, behind a flag, is in [auto-merge.md](auto-merge.md) (agreed 2026-11-10, not built).
+Status: phase 0 shipped as v0.1.0 (2026-11-02). Phase 1 is merged and released as 0.2.0. The test repository has run from `@main` since 2026-11-06; one exit criterion, a flag going from preview to default, needs a 0.2.x release. Phase 2 hasn't started. §6 and §7 describe more than 0.2 builds; the notes there say what. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md). The factory can stay private or go public (§11), versions stay below 1.0 so this architecture ships as a minor release, and repositories learn about updates through issues the factory opens during runs that happen anyway, not from a scheduled job. The companion [pipeline.md](pipeline.md) makes the stages themselves configuration. The design for merging low-risk PRs without a human, behind a flag, is in [auto-merge.md](auto-merge.md) (agreed 2026-11-10, not built).
 
 ## The problem
 
@@ -329,18 +329,21 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
 4. Add the PR-title lint and release-please (pre-1.0 settings, moving `v0.N` tags).
 5. Merge, choose public or private (§11), run `factory protect`, tag each consumer (`factory doctor --fix`), run `factory rotate-secrets`, delete the old Terragrunt state, and cut v0.1.0.
 
-**Phase 1: the test repository on `@main`; ships as v0.2.0. Step 1 and the install in step 2 are built on one branch; the rest is to do.** The test repository is converted on a branch (stubs on `@main`, `features: {preview: all}`) and not merged. Nothing has run from `@main` yet.
+**Phase 1: the test repository on `@main`; ships as v0.2.0. Steps 1–3 are done; one exit criterion is left.** The test repository's stubs call `@main`, with `features: {preview: all}`.
 1. Build the reusable workflows as the generic stage runner from [pipeline.md](pipeline.md), along with:
    - `prepare`
    - `pipeline.yaml` and `features.yaml` (`contract.lock` is not built)
    - the `config.yml` schema
    - the update check and the `factory:update` issue (the update stage is not built)
    - the `factory` CLI (`install`, `update`, `tracker`, `materialize` and doctor's 0.2 checks; `try` is not built)
-2. Run `factory install` in the test repository (done, on a branch). It replaces the vendored copies with stubs at `@main`, adds `config.yml` with `preview: all`, and adds the hook.
-3. Answer the open questions (to do).
-4. Exit when (to do):
-   - every stage and an interactive session have run green from `@main`; the update stage is deferred, so the `factory:update` issue is checked instead
-   - a test flag has gone from preview to default and produced an update issue
+2. Run `factory install` in the test repository (done). It replaces the vendored copies with stubs at `@main`, adds `config.yml` with `preview: all`, and adds the hook.
+3. Answer the open questions (done; see Open questions).
+4. Exit when:
+   - every stage and an interactive session have run green from `@main`; the update stage is deferred, so the `factory:update` issue is checked instead. **Mostly done (2026-11-06):**
+     - ran live: triage, spec, implement, review, improve-review, dependency-bump (the breaking-release path), notify-consumers, the `factory:update` issue, and a session's SessionStart hook
+     - dry run only: bet-intake
+     - not run: the local runtime (no self-hosted runner), and dependency-bump's agent path (no non-breaking library release yet)
+   - a test flag has gone from preview to default and produced an update issue. **To do:** flags change state only with a release, so this needs a 0.2.x release after 0.2.0.
 
 **Phase 2: everyone else on `@v0.2`.** Not started; the 0.1 copy mode still works until step 4.
 1. Run `factory install` once in each repository. That is one PR each, and the last manual install.
@@ -348,7 +351,9 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
 3. Move each repository's settings from its repository variables into its `config.yml`.
 4. Delete `templates/github/workflows/` and the installer's copy mode.
 
-**Proposed, not scheduled: session archives and memory.** Keeping each run's transcript in a private archive per organization, turning it into memory each repository reads, and bringing lessons about the factory back to it are proposed in [memory.md](memory.md).
+**Session archives and memory.** [memory.md](memory.md) covers three things: keeping each run's transcript in a private archive per organization, turning it into memory each repository reads, and bringing lessons about the factory back to it.
+- Part 1, the archive, is built behind the `session-archive` flag and has run in the test repository since 2026-11-10.
+- The rest is proposed, not scheduled.
 
 ## Open questions
 
