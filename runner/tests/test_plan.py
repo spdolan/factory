@@ -26,7 +26,7 @@ BASE = {
     "repository": "acme/app", "server_url": "https://github.com", "run_id": "99",
     "factory": {"repo": "acme/factory", "sha": "a" * 40, "ref": "refs/tags/v0.2", "release": "v0.2.0"},
     "tags": {"v0.2": "a" * 40, "v0.2.0": "a" * 40},
-    "config": {"features": {"off": ["spec-auto-advance", "skill-sources", "session-archive"]}},
+    "config": {"features": {"off": ["spec-auto-advance", "skill-sources", "session-archive", "dependency-bots"]}},
 }
 PR = {"number": 3, "labels": [], "state": "open", "draft": False, "head_ref": "feat/x",
       "base_sha": "1" * 40, "head_sha": "2" * 40, "changed_lines": 120}
@@ -44,10 +44,10 @@ CASES = {
                              item={"number": 7, "labels": ["ready-to-spec", "factory:local"]}),
     "implement-autonomous-verify": dict(stage="implement", event_name="workflow_dispatch", params={"issue_number": 7},
                                         item={"number": 7, "labels": ["ready-to-implement", "factory:agent"]},
-                                        config={"verify": True, "features": {"off": ["spec-auto-advance", "skill-sources", "session-archive"]}}),
+                                        config={"verify": True, "features": {"off": ["spec-auto-advance", "skill-sources", "session-archive", "dependency-bots"]}}),
     "implement-config-local": dict(stage="implement", event_name="issues", event={"action": "labeled", "label": {"name": "ready-to-implement"}},
                                    item={"number": 8, "labels": ["ready-to-implement"]},
-                                   config={"stages": {"implement": {"runtime": "local"}}, "features": {"off": ["spec-auto-advance", "skill-sources", "session-archive"]}}),
+                                   config={"stages": {"implement": {"runtime": "local"}}, "features": {"off": ["spec-auto-advance", "skill-sources", "session-archive", "dependency-bots"]}}),
     "implement-wrong-label": dict(stage="implement", event_name="issues", event={"action": "labeled", "label": {"name": "factory:approved"}},
                                   item={"number": 8, "labels": ["ready-to-spec", "factory:approved"]}),
     "review-small": dict(stage="review", event_name="pull_request_target", event={"action": "opened"}, item=PR),
@@ -249,7 +249,7 @@ class Updates(unittest.TestCase):
         c["config"] = {"features": {"preview": "all"}}
         c["factory"]["ref"] = "refs/heads/main"
         u = plan.resolve(c)["update"]
-        self.assertEqual((u["needed"], u["newer_line"], u["pending"]), (True, None, ["spec-auto-advance", "skill-sources", "session-archive"]))
+        self.assertEqual((u["needed"], u["newer_line"], u["pending"]), (True, None, ["spec-auto-advance", "skill-sources", "session-archive", "dependency-bots"]))
         self.assertIn("(preview, on now through features.preview)", u["body"])
 
     def test_preview_flag_wording_follows_features_preview(self):
@@ -327,6 +327,38 @@ class Config(unittest.TestCase):
 
     def test_unknown_flag_is_a_warning(self):
         self.assertEqual(self.check({"features": {"off": ["gone"]}})[1], ["features.off: no flag 'gone' in this factory version"])
+
+
+class Bots(unittest.TestCase):
+    def bots(self, config=None, flag=False):
+        c = ctx("review-small")
+        c["config"] = copy.deepcopy(config or {})
+        c["config"].setdefault("features", {})["on" if flag else "off"] = ["dependency-bots"]
+        p = plan.resolve(c)
+        return p["allowed_bots"].split(","), p["sources"]["allowed_bots"]
+
+    def test_default_list(self):
+        self.assertEqual(self.bots(), (["github-actions", "github-actions[bot]", "claude[bot]", "dependabot[bot]"],
+                                       "pipeline.yaml"))
+
+    def test_flag_adds_renovate(self):
+        bots, why = self.bots(flag=True)
+        self.assertEqual(bots[-1], "renovate[bot]")
+        self.assertEqual(why, "pipeline.yaml, flag dependency-bots")
+
+    def test_config_adds_without_duplicates(self):
+        bots, why = self.bots({"dependencies": {"bots": ["my-app[bot]", "dependabot[bot]"]}})
+        self.assertEqual(bots[-2:], ["dependabot[bot]", "my-app[bot]"])
+        self.assertEqual(bots.count("dependabot[bot]"), 1)
+        self.assertEqual(why, "pipeline.yaml, config.yml dependencies.bots")
+
+    def test_config_is_checked(self):
+        check = lambda cfg: plan.validate_config(cfg, load_pipeline(), load_features())[0]  # noqa: E731
+        self.assertEqual(check({"dependencies": {"bots": ["my-app[bot]", "a-user"]}}), [])
+        bad = "dependencies.bots must be a list of GitHub account names, e.g. my-app[bot]"
+        for v in (["*"], "my-app[bot]", ["a b"], [1]):
+            self.assertEqual(check({"dependencies": {"bots": v}}), [bad], v)
+        self.assertEqual(check({"dependencies": {"updater": "renovate"}}), ["unknown key 'dependencies.updater'"])
 
 
 class Stubs(unittest.TestCase):

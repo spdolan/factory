@@ -1,5 +1,6 @@
 {
   "agent": null,
+  "allowed_bots": "github-actions,github-actions[bot],claude[bot],dependabot[bot]",
   "apply": [
     "open-breaking-issue"
   ],
@@ -39,11 +40,13 @@
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "flag_sources": {
+    "dependency-bots": "config.yml features.off",
     "session-archive": "config.yml features.off",
     "skill-sources": "config.yml features.off",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
+    "dependency-bots": false,
     "session-archive": false,
     "skill-sources": false,
     "spec-auto-advance": false
@@ -75,6 +78,7 @@
   "sources": {
     "agent.effort": "pipeline.yaml",
     "agent.tier": "pipeline.yaml",
+    "allowed_bots": "pipeline.yaml",
     "autonomy": "factory default",
     "runtime": "pipeline.yaml",
     "verify": "factory default"

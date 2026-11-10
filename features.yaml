@@ -31,3 +31,10 @@ session-archive:
   state: preview
   added: 0.2.0
   cost: repository storage in the archive; no model calls
+
+dependency-bots:
+  summary: Agent stages also run on events from renovate[bot] (dependency PRs from the hosted Renovate app), as they already do for dependabot[bot]. Bot names in config.yml dependencies.bots are allowed whether or not this is on.
+  stages: [all]
+  state: preview
+  added: 0.2.2
+  cost: a review run (and any other stage the PR triggers) on each Renovate pull request

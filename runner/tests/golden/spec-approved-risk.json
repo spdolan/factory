@@ -11,6 +11,7 @@
     "skill": "spec",
     "tier": "deep"
   },
+  "allowed_bots": "github-actions,github-actions[bot],claude[bot],dependabot[bot]",
   "apply": [
     "open-pr",
     "set-state",
@@ -53,11 +54,13 @@
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "flag_sources": {
+    "dependency-bots": "config.yml features.off",
     "session-archive": "config.yml features.off",
     "skill-sources": "config.yml features.off",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
+    "dependency-bots": false,
     "session-archive": false,
     "skill-sources": false,
     "spec-auto-advance": false
@@ -85,6 +88,7 @@
   "sources": {
     "agent.effort": "pipeline.yaml when.risk",
     "agent.tier": "pipeline.yaml when.risk",
+    "allowed_bots": "pipeline.yaml",
     "autonomy": "factory default",
     "runtime": "pipeline.yaml",
     "verify": "factory default"

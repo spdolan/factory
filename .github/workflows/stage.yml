@@ -70,6 +70,7 @@ jobs:
       base_sha: ${{ steps.prepare.outputs.base_sha }}
       head_sha: ${{ steps.prepare.outputs.head_sha }}
       allowed_tools: ${{ steps.prepare.outputs.allowed_tools }}
+      allowed_bots: ${{ steps.prepare.outputs.allowed_bots }}
       setting_sources: ${{ steps.prepare.outputs.setting_sources }}
       work_dir: ${{ steps.prepare.outputs.work_dir }}
       session_name: ${{ steps.prepare.outputs.session_name }}
@@ -278,7 +279,8 @@ jobs:
           # The Bun setup.sh installed, if it exported FACTORY_BUN_PATH. Otherwise the action installs
           # its own Bun and puts it first on PATH, so the agent's commands would run on that one.
           path_to_bun_executable: ${{ env.FACTORY_BUN_PATH }}
-          allowed_bots: "github-actions,github-actions[bot],claude[bot],dependabot[bot]"
+          # pipeline.yaml `bots`, the dependency-bots flag and config.yml dependencies.bots.
+          allowed_bots: ${{ needs.plan.outputs.allowed_bots }}
           prompt: ${{ needs.plan.outputs.prompt }}
           claude_args: ${{ needs.plan.outputs.claude_args }}
 
