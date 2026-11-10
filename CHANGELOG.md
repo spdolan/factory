@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.2](https://github.com/spdolan/factory/compare/v0.2.1...v0.2.2) (2026-11-10)
+
+
+### Features
+
+* **cli:** rotate-secrets skips secrets a repository already has; --force rotates ([#39](https://github.com/spdolan/factory/issues/39)) ([cad8d31](https://github.com/spdolan/factory/commit/cad8d31aab5ede370ef9aaac281b6559822782c9))
+
+
+### Bug Fixes
+
+* **stage:** put the agent's skills back after claude-code-action's pull request restore ([#40](https://github.com/spdolan/factory/issues/40)) ([4e06a94](https://github.com/spdolan/factory/commit/4e06a94445d013e364b98b0d211b0d21fbf66c1d))
+
 ## [0.2.1](https://github.com/spdolan/factory/compare/v0.2.0...v0.2.1) (2026-11-10)
 
 
