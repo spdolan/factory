@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/spdolan/factory/compare/v0.2.0...v0.2.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* **flags:** the update issue says "on now through features.preview" for an undecided preview flag that features.preview turns on ([c52873d](https://github.com/spdolan/factory/commit/c52873d4ca81cd5460422fcdb41314429fbf4817))
+
 ## [0.2.0](https://github.com/spdolan/factory/compare/v0.1.0...v0.2.0) (2026-11-10)
 
 
