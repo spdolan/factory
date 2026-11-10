@@ -38,6 +38,6 @@ session-archive:
 flag-lifecycle-check:
   summary: "Test only: gates nothing. It checks that a flag moving from preview to default shows up in this issue, and will be removed without notice."
   stages: []
-  state: preview
+  state: default
   added: 0.2.1
   cost: none

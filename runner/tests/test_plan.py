@@ -252,13 +252,16 @@ class Updates(unittest.TestCase):
         self.assertEqual((u["needed"], u["newer_line"], u["pending"]), (True, None, ["spec-auto-advance", "skill-sources", "session-archive", "flag-lifecycle-check"]))
         self.assertIn("(preview, on now through features.preview)", u["body"])
 
-    def test_preview_flag_without_preview_all_says_off(self):
-        c = ctx("triage")
-        c["config"] = {"features": {"off": ["spec-auto-advance", "skill-sources", "session-archive"]}}
-        c["factory"]["ref"] = "refs/heads/main"
-        u = plan.resolve(c)["update"]
-        self.assertEqual(u["pending"], ["flag-lifecycle-check"])
-        self.assertIn("(preview, off until you opt in)", u["body"])
+    def test_preview_flag_wording_follows_features_preview(self):
+        feats = {"p": {"summary": "s", "stages": [], "state": "preview", "added": "0.2.0", "cost": ""},
+                 "d": {"summary": "s", "stages": [], "state": "default", "added": "0.2.0", "cost": ""}}
+        fac = {"factory": {"ref": "refs/heads/main", "sha": "a" * 40, "repo": "acme/factory"}}
+        for preview, want in (([], "(preview, off until you opt in)"), ("all", "(preview, on now through features.preview)"),
+                              (["p"], "(preview, on now through features.preview)")):
+            with self.subTest(preview=preview):
+                body = plan.update_check(fac, {"features": {"preview": preview}}, feats, ["p", "d"])["body"]
+                self.assertIn(want, body)
+                self.assertIn("`d` (default, on now)", body)
 
     def test_check_false(self):
         c = ctx("update-newer-line")
