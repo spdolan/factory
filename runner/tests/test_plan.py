@@ -391,5 +391,21 @@ class Route(unittest.TestCase):
         self.assertIn("bet `none`", body)
 
 
+class ToolsNote(unittest.TestCase):
+    def test_limited_shell_lists_the_commands(self):
+        note = plan.tools_note(["Read", "Write", "Bash(python3 validate.py:*)"])
+        self.assertIn("`Read`, `Write`", note)
+        self.assertIn("`python3 validate.py`", note)
+        self.assertIn("no `&&`", note)
+
+    def test_no_shell_and_full_shell(self):
+        self.assertIn("There is no shell.", plan.tools_note(["Read", "Glob", "Grep"]))
+        self.assertEqual(plan.tools_note(["Bash", "Read"]), "")
+
+    def test_review_prompt_carries_it(self):
+        p = plan.resolve(ctx("review-small"))
+        self.assertIn("validate_review_json.py`", p["prompt"].split("Your tools in this run:")[1])
+
+
 if __name__ == "__main__":
     unittest.main()

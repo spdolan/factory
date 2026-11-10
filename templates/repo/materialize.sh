@@ -16,6 +16,12 @@
 
 set -u
 
+# A factory agent job has already copied in the skills for its run (the factory's at the run's
+# commit, and the skill sources the plan job synced), so the hook has nothing to do there.
+if [ "${FACTORY_SKILLS_PREPARED:-}" = 1 ]; then
+  exit 0
+fi
+
 warn() { echo "factory: skills not updated: $*" >&2; }
 
 materialize() {

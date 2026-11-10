@@ -266,6 +266,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CLAUDE_CODE_EFFORT_LEVEL: ${{ needs.plan.outputs.effort }}
           GITHUB_PACKAGES_TOKEN: ${{ github.token }}
+          # This job has already copied the skills in: the factory's at this run's commit and the
+          # plan job's skill sources. The repository's SessionStart hook (materialize.sh) sees this
+          # and does nothing, rather than refetch the factory at the stubs' ref or retry sources
+          # it has no token for.
+          FACTORY_SKILLS_PREPARED: "1"
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
