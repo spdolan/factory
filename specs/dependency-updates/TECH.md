@@ -5,7 +5,7 @@ Product spec: [PRODUCT.md](PRODUCT.md). Issue: #42, with the owner's addendum ma
 ## Context
 
 - **`dependency-bump`** (`pipeline.yaml`) runs on `repository_dispatch: factory-dependency-release`, which another repository's `notify-consumers` sends, or on dispatch. A non-breaking release runs the `dependency-bump` skill on the `fast` tier: an agent edits the pins, the lockfile and the version comments, and the apply job's `open-pr` turns its patch into a PR. A breaking release runs no agent. `when.breaking` swaps in `open-breaking-issue` (`runner/apply.py`).
-- **Bots allowed through review are hard-coded**: `allowed_bots` in `.github/workflows/stage.yml` and `templates/github/workflows/factory-review.yml`.
+- **The bots allowed to start an agent come from the plan**, as of #43. `stage.yml` reads them from `needs.plan.outputs.allowed_bots`. `templates/github/workflows/factory-review.yml`, the 0.1 copy mode, keeps its own hard-coded list.
 - **Nothing recognizes a dependency PR.** Only `open-breaking-issue` writes a `chore(deps)!:` title.
 - **`updates:` in `config.yml` means factory updates** (`updates.check`, `updates.advance`; `validate_config` in `runner/plan.py`, `docs/rollout.md` §6.2). The updater choice therefore takes a new top-level key, `dependencies`.
 - **The issue asked for four open questions to be checked before a spec was written.** They were checked against primary sources on 2026-11-10. Each answer is in the section it affects:
@@ -26,19 +26,29 @@ Quoted sources are listed in [Sources](#sources).
 ```yaml
 dependencies:
   updater: agent        # renovate | dependabot | agent (default agent)
-  bots: []              # extra bot logins for allowed_bots (its own PR)
+  bots: []              # extra bot logins for allowed_bots (built in #43)
 ```
 
-- `validate_config` adds `dependencies` to the known top-level keys.
-  - `dependencies.updater` must be one of the three values.
-  - `dependencies.bots` must be a list of logins matching `^[A-Za-z0-9-]+(\[bot\])?$`.
-  - Any other key under `dependencies` is a problem.
+- **Validation.** #43 already adds `dependencies` to the known top-level keys and validates `dependencies.bots`. It currently rejects every other `dependencies.*` key, so this change must:
+  - add `updater` to the accepted keys;
+  - require `dependencies.updater` to be one of the three values;
+  - keep treating any other key under `dependencies` as a problem.
 - `templates/repo/config.yml` documents the key, commented out like the others.
 - **Resolution.** The plan resolves the updater, and the job summary shows where it came from:
   - flag off: `agent`, with a warning if the file says otherwise;
   - flag on: the file's value, else `agent`.
 
-`dependencies.bots` is the parent change's: it feeds `allowed_bots` in `stage.yml` and `factory-review.yml`, with the defaults `renovate[bot]`, `dependabot[bot]` and the factory's own app. That change lands in a separate PR. This spec only keeps the key name consistent with it.
+**`dependencies.bots` is built separately, in #43.** This spec only relies on it. The plan's `allowed_bots()` builds the list in this order:
+1. `pipeline.yaml` `bots.allowed`: `github-actions`, `github-actions[bot]`, `claude[bot]` and `dependabot[bot]`.
+2. `bots.dependency-bots`: `renovate[bot]`, only while the `dependency-bots` flag (preview) is on.
+3. `dependencies.bots` from `config.yml`, whatever the flags.
+
+Rules for `dependencies.bots`:
+- Each name must match `^[A-Za-z0-9][A-Za-z0-9-]*(\[bot\])?$`, and `*` is refused.
+- It only adds names; nothing removes the pipeline's.
+- Only `stage.yml` reads the result. The 0.1 copy-mode `factory-review.yml` is unchanged.
+
+There is no default for the factory's own app, because its slug differs per account. Self-hosted Renovate with an app token opens PRs as `<slug>[bot]`, not `renovate[bot]`, so such a repository needs that name in `dependencies.bots` (§5, §8). It doesn't need the `dependency-bots` flag.
 
 ### 2. The flag
 
@@ -133,7 +143,7 @@ when:
 - **The app.** A GitHub App the owner controls, installed on the consuming repository and on any private repository it pins by git (§6).
   - Permissions: those Renovate's GitHub platform docs list for an app, plus **Workflows: write**, so that action pin updates can be pushed. The build copies the exact list from those docs.
   - Secrets: `FACTORY_APP_CLIENT_ID` and `FACTORY_APP_PRIVATE_KEY` join `SECRETS` in `plan.py` (so every stub passes them) and the secret list in `scripts/factory rotate-secrets`.
-  - Its `<slug>[bot]` login is "the factory's own app" in the default `allowed_bots`.
+  - Its login is `<slug>[bot]`, and it has no default place in `allowed_bots`. The repository adds it to `dependencies.bots`, or review won't run on Renovate's PRs.
 - **The fallback.** `FACTORY_GITHUB_TOKEN`, which is fine-grained. It also needs **Workflows: read and write** on the repository, or Renovate can't push changes under `.github/workflows/`. PRs opened with it are authored by the owner.
 
 **Reading private GitHub Packages (open question a).**
@@ -194,7 +204,7 @@ The regex manager and the `packageRules` belong to the repository's Renovate con
 
 ### 8. Documentation
 
-- **`docs/setup.md`, "Dependency updates":** the three values; the app and its permissions; the Manage Actions access grant for private packages; and the switch steps under Rollout.
+- **`docs/setup.md`, "Dependency updates":** the three values; the app and its permissions; adding the app's `<slug>[bot]` to `dependencies.bots`; the Manage Actions access grant for private packages; and the switch steps under Rollout.
 - **`docs/rollout.md` §11:** the "Dependabot bumps of pinned versions: unverified" row stays as it is, since this spec doesn't test it.
 - **`README.md`:** one line under settings pointing to `dependencies`.
 
@@ -231,7 +241,7 @@ Open question d.
 **Switching a repository to `renovate`, in order:**
 
 1. If the hosted Renovate app is installed on the repository, remove it. Otherwise two Renovates race.
-2. Set `FACTORY_APP_CLIENT_ID` and `FACTORY_APP_PRIVATE_KEY` (`factory rotate-secrets`), or give `FACTORY_GITHUB_TOKEN` Workflows: read and write.
+2. Set `FACTORY_APP_CLIENT_ID` and `FACTORY_APP_PRIVATE_KEY` (`factory rotate-secrets`), and add the app's `<slug>[bot]` to `dependencies.bots`. Or give `FACTORY_GITHUB_TOKEN` Workflows: read and write; its PRs are authored by the owner, so they need no bot entry.
 3. Add the repository under Manage Actions access (Read) on each private package it installs.
 4. **In one PR**, which reaches the default branch in one merge, since `config.yml` is read from there:
    - set `features.on: [dependency-updater]` and `dependencies.updater: renovate`;
@@ -243,6 +253,7 @@ Open question d.
 
 **`factory doctor` reports:**
 - `updater: renovate` with neither app secrets nor `FACTORY_GITHUB_TOKEN`;
+- `updater: renovate` with app secrets but an empty `dependencies.bots`, so review won't run on the app's PRs;
 - `updater: renovate` and no Renovate config file (`renovate.json`, `.github/renovate.json`, `renovate.json5`, `.renovaterc*`);
 - `dependencies.updater` set while the flag is off.
 
@@ -257,7 +268,7 @@ Open question d.
 | 5 | `updater-plan` test: the token step fails without app secrets or `FACTORY_GITHUB_TOKEN`. No step passes `github.token` to the action as its token. |
 | 6 | Test repository: a dry run lists the private package's versions with the `GITHUB_TOKEN` host rule and the Manage Actions access grant, and fails without the grant. |
 | 7 | `test_plan.py`: `is_dependency_pr` is true for `chore(deps): …`, `chore(deps)!: …` and the `dependencies` label, and false for a `chore(deps)` look-alike (`chore(depsx):`) and for a bot-authored `feat:` PR. |
-| 8 | In the parent's separate PR. |
+| 8 | Covered by #43's tests and golden plans. Here, a `test_plan.py` case checks that a config with both `dependencies.updater` and `dependencies.bots` validates. |
 | 9 | Golden plans with the flag off: `updater: renovate` plans as `agent` with a warning. `updater-plan` returns `run: false`. The review prompt has no dependency line. |
 | 10 | The golden plan for `dependency-bump` with no `dependencies` key is unchanged. The rendered stub diff adds only the new stub and the two optional secrets. |
 | 11 | `scripts/check-references.sh` passes. |

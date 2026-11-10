@@ -38,7 +38,11 @@ The consumers are repositories that call the factory, the owner who sets them up
 5. **Renovate's PRs trigger CI and can update workflow files.** They are opened with an installation token from a GitHub App the owner controls, or with `FACTORY_GITHUB_TOKEN` when no app is set up. They are never opened with `GITHUB_TOKEN`.
 6. **Private GitHub Packages are readable without a new long-lived token.** When a repository installs a private npm package from `npm.pkg.github.com`, the package's settings grant that repository Read under **Manage Actions access**. Renovate then reads the package with the run's `GITHUB_TOKEN`. `FACTORY_READ_TOKEN` can't do this (TECH.md, "Tokens").
 7. **The factory recognizes a dependency PR by its title or label**: a title starting `chore(deps):` or `chore(deps)!:`, or a `dependencies` label. It never goes by the PR's author. The review stage uses this rule, and every later dependency-specific behavior must use it too.
-8. **The bots allowed through review come from `config.yml`.** The defaults are `renovate[bot]`, `dependabot[bot]` and the factory's own app. `dependencies.bots` adds more. This piece lands in its own PR, separately from this spec.
+8. **The bots whose events may start an agent are configurable.** This lands in its own PR, separately from this spec.
+   - **Always allowed:** `github-actions`, `github-actions[bot]`, `claude[bot]` and `dependabot[bot]`, held in `pipeline.yaml` under `bots`.
+   - **`renovate[bot]`** (the hosted Renovate app) is added only while the `dependency-bots` flag is on. That flag is in preview.
+   - **`dependencies.bots`** in `config.yml` adds more names, whether or not either flag is on. It can only add names, never remove them, and `*` is refused.
+   - **The factory's own app has no default**, because its slug differs per account. A repository whose Renovate runs with an app token adds that app's `<slug>[bot]` to `dependencies.bots`. Self-hosted Renovate's PRs are authored by that app, not by `renovate[bot]`.
 9. **All of this is behind the `dependency-updater` flag.** It starts in `preview`. While the flag is off:
    - `dependencies.updater` is read as `agent`, and the plan warns if it says otherwise;
    - the weekly run does nothing beyond its plan job;
