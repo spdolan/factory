@@ -708,8 +708,11 @@ def update_check(ctx: dict, settings: dict, features: dict, undecided: list) -> 
         top = lines[-1]
         if top > key:
             newer = "v" + ".".join(map(str, top))
+    preview = (settings.get("features") or {}).get("preview") or []
     pending = [{"id": f, "summary": features[f]["summary"], "state": features[f]["state"],
-                "cost": features[f].get("cost", ""), "added": features[f].get("added", "")} for f in undecided]
+                "cost": features[f].get("cost", ""), "added": features[f].get("added", ""),
+                "previewing": features[f]["state"] == "preview" and (preview == "all" or f in preview)}
+               for f in undecided]
     check = bool((settings.get("updates") or {}).get("check", True))
     needed = check and bool(newer or pending)
     body = ""
@@ -725,7 +728,8 @@ def update_check(ctx: dict, settings: dict, features: dict, undecided: list) -> 
             out += ["", "## Flags this repository hasn't decided on", "",
                     "Put each one under `features.on` or `features.off` in `.github/factory/config.yml` to settle it.", ""]
             for p in pending:
-                now = "on now" if p["state"] == "default" else "off until you opt in"
+                now = ("on now" if p["state"] == "default" else
+                       "on now through features.preview" if p["previewing"] else "off until you opt in")
                 opt = f"features: {{off: [{p['id']}]}}" if p["state"] == "default" else f"features: {{on: [{p['id']}]}}"
                 out.append(f"- [ ] `{p['id']}` ({p['state']}, {now}): {p['summary']} Cost: {p['cost'] or 'none'}. `{opt}`")
         out += ["", "_Opened by the factory's plan job. `updates: {check: false}` in config.yml turns this off._"]

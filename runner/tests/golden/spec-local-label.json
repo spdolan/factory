@@ -46,11 +46,13 @@
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "flag_sources": {
+    "flag-lifecycle-check": "config.yml features.off",
     "session-archive": "config.yml features.off",
     "skill-sources": "config.yml features.off",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
+    "flag-lifecycle-check": false,
     "session-archive": false,
     "skill-sources": false,
     "spec-auto-advance": false
