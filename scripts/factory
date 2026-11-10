@@ -33,14 +33,21 @@
 #       stubs come from the target's pipeline.yaml. Prints the MIGRATION.md entries
 #       between the two versions for you to follow.
 #
-#   factory rotate-secrets [--owner OWNER] [--dry-run]
+#   factory rotate-secrets [--owner OWNER] [--dry-run] [--force [NAME[,NAME…]]]
 #       Sets each of FACTORY_GITHUB_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY,
 #       FACTORY_READ_TOKEN (needed only while the factory is private), FACTORY_SKILLS_TOKEN
 #       (read access to private skill sources in .agents/skills.lock) and FACTORY_ARCHIVE_KEY
-#       (a public repository's session-archive key) that is
-#       exported in your shell on every repository OWNER owns that declares itself a consumer
-#       (has the `factory` topic). OWNER defaults to your gh login. Values are piped to gh,
-#       never put on a command line, and nothing is written to disk.
+#       (a public repository's session-archive key) that is exported in your shell on every
+#       repository OWNER owns that declares itself a consumer (has the `factory` topic).
+#       OWNER defaults to your gh login. Values are piped to gh, never put on a command line,
+#       and nothing is written to disk.
+#       By default a secret a repository already has is left alone, so adding one repository
+#       doesn't overwrite the others (it reads the names from `gh secret list`, once per
+#       repository, never the values). --force sets exported secrets everywhere: that is how to
+#       rotate. --force NAME[,NAME…] rotates only those (each must be exported); the other
+#       exported secrets are still set where missing. --dry-run lists, per secret and
+#       repository, what it would set (missing), rotate (--force) or skip, and sets nothing.
+#       The last line counts each.
 #
 #   factory protect [--repo OWNER/NAME] [--release-app APP_ID]
 #       Run inside the factory. Creates or updates its rulesets: main changes only through
@@ -706,11 +713,15 @@ cmd_doctor() {
 }
 
 cmd_rotate_secrets() {
-  local owner="" dry_run=false
+  local owner="" dry_run=false force=false force_names=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --owner) owner="${2:?--owner needs a value}"; shift ;;
       --dry-run) dry_run=true ;;
+      --force)
+        force=true
+        # An optional NAME[,NAME…] follows; nothing else takes a bare argument.
+        case "${2:-}" in ""|-*) ;; *) force_names="$2"; shift ;; esac ;;
       -h|--help) usage; exit 0 ;;
       *) die "rotate-secrets: unknown option $1" ;;
     esac
@@ -725,28 +736,85 @@ cmd_rotate_secrets() {
   done
   [ "${#names[@]}" -gt 0 ] || die "export at least one of ${SECRETS[*]} first"
 
+  # forced: the names --force rotates; empty with a bare --force means all of them.
+  local forced=() f known listed
+  if [ -n "$force_names" ]; then
+    IFS=',' read -r -a forced <<<"$force_names"
+    for f in "${forced[@]}"; do
+      known=false
+      for n in "${SECRETS[@]}"; do [ "$n" = "$f" ] && known=true; done
+      [ "$known" = true ] || die "rotate-secrets: --force $f: not one of ${SECRETS[*]}"
+      listed=false
+      for n in "${names[@]}"; do [ "$n" = "$f" ] && listed=true; done
+      [ "$listed" = true ] || die "rotate-secrets: --force $f: $f is not exported in this shell"
+    done
+  fi
+
   local repos self
   repos="$(gh repo list "$owner" --topic "$TOPIC" --limit 1000 --json nameWithOwner -q '.[].nameWithOwner' | sort)"
   [ -n "$repos" ] || die "no repositories of $owner have the '$TOPIC' topic; run 'factory doctor --fix' in each consumer"
   self="$(factory_repo)"
 
-  local r count=0
+  # Counters: repositories seen, repositories with a change, failed; secrets set, rotated, skipped.
+  local r count=0 changed=0 failed=0 n_set=0 n_rot=0 n_skip=0 existing repo_changed forcing verb
   while IFS= read -r r; do
     if [ "$r" = "$self" ]; then
       echo "skip     $r (the factory itself; agents' tokens must never cover it)"
       continue
     fi
+    count=$((count + 1))
+    # Names only, never values; one call per repository.
+    if ! existing="$(gh secret list --repo "$r" --json name -q '.[].name' 2>/dev/null)"; then
+      echo "error    can't list the secrets of $r; nothing set there (needs admin access to the repository)" >&2
+      failed=$((failed + 1))
+      continue
+    fi
+    repo_changed=false
     for n in "${names[@]}"; do
+      forcing=false
+      if [ "$force" = true ]; then
+        if [ -z "$force_names" ]; then
+          forcing=true
+        else
+          for f in "${forced[@]}"; do [ "$f" = "$n" ] && forcing=true; done
+        fi
+      fi
+      if grep -qxF -- "$n" <<<"$existing"; then
+        if [ "$forcing" = true ]; then verb=rotate; else verb=skip; fi
+      else
+        verb="set"
+      fi
+      case "$verb" in
+        skip)
+          n_skip=$((n_skip + 1))
+          if [ "$dry_run" = true ]; then echo "would skip $n on $r (already set; use --force to rotate)"
+          else echo "skip     $n on $r (already set; use --force to rotate)"; fi
+          continue ;;
+        set) n_set=$((n_set + 1)) ;;
+        rotate) n_rot=$((n_rot + 1)) ;;
+      esac
+      repo_changed=true
       if [ "$dry_run" = true ]; then
-        echo "would set $n on $r"
+        echo "would $verb $n on $r"
       else
         printf '%s' "${!n}" | gh secret set "$n" --repo "$r" >/dev/null
-        echo "set      $n on $r"
+        printf '%-8s %s on %s\n' "$verb" "$n" "$r"
       fi
     done
-    count=$((count + 1))
+    [ "$repo_changed" = false ] || changed=$((changed + 1))
   done <<<"$repos"
-  echo "${count} repositor$( [ "$count" = 1 ] && echo y || echo ies)$( [ "$dry_run" = true ] && echo ' (dry run: nothing set)'). A consumer missing from this list lacks the '$TOPIC' topic."
+
+  local summary
+  if [ "$dry_run" = true ]; then
+    summary="would set $n_set, would rotate $n_rot, would skip $n_skip (dry run: nothing changed)"
+  else
+    summary="set $n_set, rotated $n_rot, skipped $n_skip"
+  fi
+  echo "${count} repositor$( [ "$count" = 1 ] && echo y || echo ies) ($changed $( [ "$dry_run" = true ] && echo 'with a change' || echo changed), $((count - changed - failed)) unchanged$( [ "$failed" -gt 0 ] && echo ", $failed failed")): $summary. A consumer missing from this list lacks the '$TOPIC' topic."
+  if [ "$n_skip" -gt 0 ]; then
+    echo "$n_skip secret(s) $( [ "$dry_run" = true ] && echo "are already set and would be" || echo "were already set and") left alone. To rotate, export the new value and run with --force (or --force NAME)."
+  fi
+  [ "$failed" -eq 0 ] || exit 1
 }
 
 cmd_protect() {
