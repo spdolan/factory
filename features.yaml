@@ -31,13 +31,3 @@ session-archive:
   state: preview
   added: 0.2.0
   cost: repository storage in the archive; no model calls
-
-# Test only (docs/rollout.md, phase 1 exit): checks that a flag going from preview to default
-# reaches the factory:update issue. It gates nothing and is removed before 0.2.1. Don't put it
-# in features.on or features.off.
-flag-lifecycle-check:
-  summary: "Test only: gates nothing. It checks that a flag moving from preview to default shows up in this issue, and will be removed without notice."
-  stages: []
-  state: default
-  added: 0.2.1
-  cost: none

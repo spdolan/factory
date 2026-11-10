@@ -1,6 +1,6 @@
 # Rolling out factory changes
 
-Status: phase 0 shipped as v0.1.0 (2026-11-02). Phase 1 is merged and released as 0.2.0. The test repository has run from `@main` since 2026-11-06; one exit criterion, a flag going from preview to default, needs a 0.2.x release. Phase 2 hasn't started. §6 and §7 describe more than 0.2 builds; the notes there say what. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md). The factory can stay private or go public (§11), versions stay below 1.0 so this architecture ships as a minor release, and repositories learn about updates through issues the factory opens during runs that happen anyway, not from a scheduled job. The companion [pipeline.md](pipeline.md) makes the stages themselves configuration. The design for merging low-risk PRs without a human, behind a flag, is in [auto-merge.md](auto-merge.md) (agreed 2026-11-10, not built).
+Status: phase 0 shipped as v0.1.0 (2026-11-02). Phase 1 is merged and released as 0.2.0. The test repository has run from `@main` since 2026-11-06, and phase 1's exit criteria are met except for three paths that haven't run (phase 1, step 4). Phase 2 hasn't started. §6 and §7 describe more than 0.2 builds; the notes there say what. Diagrams of the target architecture and an issue's path through it are in [architecture.md](architecture.md). The factory can stay private or go public (§11), versions stay below 1.0 so this architecture ships as a minor release, and repositories learn about updates through issues the factory opens during runs that happen anyway, not from a scheduled job. The companion [pipeline.md](pipeline.md) makes the stages themselves configuration. The design for merging low-risk PRs without a human, behind a flag, is in [auto-merge.md](auto-merge.md) (agreed 2026-11-10, not built).
 
 ## The problem
 
@@ -329,7 +329,7 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
 4. Add the PR-title lint and release-please (pre-1.0 settings, moving `v0.N` tags).
 5. Merge, choose public or private (§11), run `factory protect`, tag each consumer (`factory doctor --fix`), run `factory rotate-secrets`, delete the old Terragrunt state, and cut v0.1.0.
 
-**Phase 1: the test repository on `@main`; ships as v0.2.0. Steps 1–3 are done; one exit criterion is left.** The test repository's stubs call `@main`, with `features: {preview: all}`.
+**Phase 1: the test repository on `@main`; ships as v0.2.0. Steps 1–4 are done, apart from three paths that haven't run.** The test repository's stubs call `@main`, with `features: {preview: all}`.
 1. Build the reusable workflows as the generic stage runner from [pipeline.md](pipeline.md), along with:
    - `prepare`
    - `pipeline.yaml` and `features.yaml` (`contract.lock` is not built)
@@ -343,7 +343,11 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
      - ran live: triage, spec, implement, review, improve-review, dependency-bump (the breaking-release path), notify-consumers, the `factory:update` issue, and a session's SessionStart hook
      - dry run only: bet-intake
      - not run: the local runtime (no self-hosted runner), and dependency-bump's agent path (no non-breaking library release yet)
-   - a test flag has gone from preview to default and produced an update issue. **To do:** flags change state only with a release, so this needs a 0.2.x release after 0.2.0.
+   - a test flag has gone from preview to default and produced an update issue. **Done (2026-11-10).** The test flag `flag-lifecycle-check` gated nothing. It was added in preview (#33), promoted to default (#35) and removed before 0.2.1. After each merge, one run in the test repository updated its existing `factory:update` issue:
+     - first: "preview, on now through features.preview"
+     - then: "default, on now", with the opt-out
+
+     The issue was updated in place, not opened again. The test repository calls `@main`, so each merge acted as a release there. A repository on `@v0.2` sees a flag change when the release moves `v0.2`. The announce window (`default_from`, §6.1) isn't built, so a promoted flag is listed as on from the release that promotes it.
 
 **Phase 2: everyone else on `@v0.2`.** Not started; the 0.1 copy mode still works until step 4.
 1. Run `factory install` once in each repository. That is one PR each, and the last manual install.
