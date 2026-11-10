@@ -258,6 +258,16 @@ jobs:
         id: base
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      # On a pull request, claude-code-action deletes .claude/ and checks out only the base branch's
+      # tracked files there before Claude Code starts, which takes the untracked skills above with
+      # it. Keep a copy outside the checkout; the agent step's user-level SessionStart hook (in
+      # ~/.claude/settings.json, which that restore leaves alone) puts back whatever is missing.
+      - name: Keep the skills for the agent
+        if: hashFiles('.factory-io/inputs/skip-agent') == ''
+        run: |
+          python3 .factory/runner/agent_skills.py keep --to "$RUNNER_TEMP/factory-agent-skills" \
+            --settings "$RUNNER_TEMP/factory-agent-settings.json"
+
       - name: Claude Code
         id: claude
         if: hashFiles('.factory-io/inputs/skip-agent') == ''
@@ -281,6 +291,8 @@ jobs:
           allowed_bots: "github-actions,github-actions[bot],claude[bot],dependabot[bot]"
           prompt: ${{ needs.plan.outputs.prompt }}
           claude_args: ${{ needs.plan.outputs.claude_args }}
+          # The SessionStart hook that restores the skills (Keep the skills for the agent).
+          settings: ${{ runner.temp }}/factory-agent-settings.json
 
       - name: Collect the result
         env:
