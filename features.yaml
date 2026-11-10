@@ -24,3 +24,10 @@ skill-sources:
   state: preview
   added: 0.2.0
   cost: none; the plan job downloads the pinned sources (a tarball per source) when the lock exists
+
+session-archive:
+  summary: Keep each run's redacted transcript and a run record in the private archive repository config.yml names in sessions.archive (docs/memory.md). Does nothing until sessions.archive is set.
+  stages: [all]
+  state: preview
+  added: 0.2.0
+  cost: repository storage in the archive; no model calls

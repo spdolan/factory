@@ -6,6 +6,8 @@ name: "Factory stage"
 #   plan   read-only: finds the factory commit this run was called at, resolves the stage
 #   agent  read-only tokens: Claude Code produces structured JSON, a file, or a patch
 #   apply  the only job that writes; it declares no permissions, so it gets the stub's ceiling
+#   archive  keeps the redacted transcript and a run record in the private archive config.yml
+#          names (docs/memory.md); only with the session-archive flag, and it never fails the run
 # The local runtime replaces agent and apply with one detached session on a self-hosted
 # machine that writes for itself. dry_run skips apply everywhere.
 #
@@ -39,6 +41,7 @@ on:
         required: false
       # Read access to private skill sources in the repository's .agents/skills.lock (skill-sources flag).
       FACTORY_SKILLS_TOKEN:
+      FACTORY_ARCHIVE_KEY: # encrypts a public repository's transcript between the agent and archive jobs
         required: false
 
 jobs:
@@ -72,6 +75,7 @@ jobs:
       session_name: ${{ steps.prepare.outputs.session_name }}
       worktree: ${{ steps.prepare.outputs.worktree }}
       gate_awaiting: ${{ steps.prepare.outputs.gate_awaiting }}
+      archive: ${{ steps.prepare.outputs.archive }}
       factory_repo: ${{ steps.factory.outputs.repo }}
       factory_sha: ${{ steps.factory.outputs.sha }}
       skills: ${{ steps.skills.outputs.count }}
@@ -295,6 +299,30 @@ jobs:
           path: verification/
           retention-days: 30
 
+      # docs/memory.md part 1. Redacted here, right after the agent, so nothing unredacted leaves
+      # this job; encrypted too when the repository is public, since anyone signed in can download
+      # a public repository's artifacts. The secrets are here only so their values get redacted.
+      - name: Redact the session
+        if: always() && needs.plan.outputs.archive != ''
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          FACTORY_ARCHIVE_KEY: ${{ secrets.FACTORY_ARCHIVE_KEY }}
+        run: |
+          python3 .factory/runner/archive.py redact --plan "$RUNNER_TEMP/plan.json" \
+            --execution "$RUNNER_TEMP/claude-execution-output.json" --out .factory-io/session
+
+      - name: Upload the session
+        if: always() && needs.plan.outputs.archive != '' && hashFiles('.factory-io/session/session.json') != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-session-${{ github.run_attempt }}
+          path: .factory-io/session/
+          retention-days: 1
+
   apply:
     name: apply
     needs: [plan, agent]
@@ -353,6 +381,56 @@ jobs:
         run: |
           python3 .factory/runner/apply.py --plan "$RUNNER_TEMP/plan.json" \
             --result .factory-io/result --inputs .factory-io/inputs
+
+  # docs/memory.md part 1: push the run's redacted transcript and its run record to the private
+  # archive repository config.yml names, with FACTORY_GITHUB_TOKEN. It runs after apply, whether
+  # or not the agent succeeded, and a failure here never fails the run.
+  archive:
+    name: archive
+    needs: [plan, agent, apply]
+    if: >-
+      always() && needs.plan.result == 'success' && needs.plan.outputs.archive != '' &&
+      !inputs.dry_run && needs.agent.result != 'skipped'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the factory
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.plan.outputs.factory_repo }}
+          ref: ${{ needs.plan.outputs.factory_sha }}
+          path: .factory
+          token: ${{ secrets.FACTORY_READ_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Download the session
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: factory-session-${{ github.run_attempt }}
+          path: .factory-io/session
+
+      - name: Download the result
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: factory-result-${{ github.run_attempt }}
+          path: .factory-io/result
+
+      - name: Push to the archive
+        env:
+          PLAN: ${{ needs.plan.outputs.plan }}
+          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          FACTORY_ARCHIVE_KEY: ${{ secrets.FACTORY_ARCHIVE_KEY }}
+          AGENT_RESULT: ${{ needs.agent.result }}
+          APPLY_RESULT: ${{ needs.apply.result }}
+        run: |
+          printf '%s' "$PLAN" > "$RUNNER_TEMP/plan.json"
+          python3 .factory/runner/archive.py push --plan "$RUNNER_TEMP/plan.json" \
+            --session .factory-io/session --result .factory-io/result
 
   # The local runtime (docs/local-runner.md): a background Claude Code session on a self-hosted
   # machine, with the machine owner's logins from its keychain. Detached: the session outlives

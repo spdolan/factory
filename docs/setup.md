@@ -174,3 +174,40 @@ Add this job to the library's `release-please.yml`, after the publish job. Relea
 The job also needs the permissions listed in step 6 of the 0.1 → 0.2 entry in [MIGRATION.md](../MIGRATION.md), because the stub's ceiling can't exceed its caller's.
 
 Then list the consumers under `## Consumers` in the library's `FACTORY.md`. Each consumer's `dependency-bump` stage bumps the pin for a non-breaking release, or opens an issue for a human when the release notes contain `BREAKING CHANGE`.
+
+## 4. Keep sessions (optional)
+
+The `session-archive` flag keeps each Actions run's redacted transcript and a short run record in a private archive repository ([memory.md](memory.md), part 1). Nothing is kept until a repository names its archive.
+
+1. **Create one private archive repository per owner**, for example `<owner>/factory-sessions`, with nothing in it. Every repository of that owner can share it. Give access to it only to people who can read every repository that feeds it: everyone who can read it can read all of their transcripts. Don't add the `factory` topic to it.
+2. **Add it to `FACTORY_GITHUB_TOKEN`'s repositories.** The token already has Contents: Read and write, which is all the archive needs. A fine-grained token reaches one owner's repositories only, so the archive must have the same owner as the repositories it serves.
+3. **Name it in each repository's `config.yml`**, and turn the flag on (it's in preview):
+
+   ```yaml
+   features:
+     on: [session-archive]
+   sessions:
+     archive: <owner>/factory-sessions
+   ```
+
+4. **Public repositories also need `FACTORY_ARCHIVE_KEY`.** Anyone signed in can download a public repository's run artifacts, so the transcript passes from the agent job to the archive job encrypted with this key. Without it, a public repository keeps run records but no transcripts. Use a long random value, set by `rotate-secrets` like the others:
+
+   ```bash
+   export FACTORY_ARCHIVE_KEY="$(openssl rand -base64 32)"
+   ~/code/factory/scripts/factory rotate-secrets
+   ```
+
+   Stubs installed before this key existed don't pass it; `factory update` regenerates them.
+
+`factory doctor` checks that the archive is private, has the same owner, and has no reader who can't read the repository, and that a public repository has the key. It can't see the token's scopes.
+
+Each run's summary says what was archived and what redaction removed, by kind and count. The redaction removes the run's own secrets, in plain and the encodings git uses, and common token and key patterns. It is a filter, not a guarantee: read a few transcripts in the archive after turning it on. If a secret gets through, rotate it, then delete and recreate the archive repository, because it stays in git history.
+
+What's archived, per run:
+
+```
+sessions/<repository>/<yyyy>/<mm>/<run id>-<attempt>-<stage>-<item>.jsonl.gz   # the transcript
+runs/<repository>/<yyyy>/<mm>/<run id>-<attempt>-<stage>-<item>.json           # the run record
+```
+
+The local runtime keeps its own transcripts on your machine and archives nothing.

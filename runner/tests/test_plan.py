@@ -26,7 +26,7 @@ BASE = {
     "repository": "acme/app", "server_url": "https://github.com", "run_id": "99",
     "factory": {"repo": "acme/factory", "sha": "a" * 40, "ref": "refs/tags/v0.2", "release": "v0.2.0"},
     "tags": {"v0.2": "a" * 40, "v0.2.0": "a" * 40},
-    "config": {"features": {"off": ["spec-auto-advance", "skill-sources"]}},
+    "config": {"features": {"off": ["spec-auto-advance", "skill-sources", "session-archive"]}},
 }
 PR = {"number": 3, "labels": [], "state": "open", "draft": False, "head_ref": "feat/x",
       "base_sha": "1" * 40, "head_sha": "2" * 40, "changed_lines": 120}
@@ -44,10 +44,10 @@ CASES = {
                              item={"number": 7, "labels": ["ready-to-spec", "factory:local"]}),
     "implement-autonomous-verify": dict(stage="implement", event_name="workflow_dispatch", params={"issue_number": 7},
                                         item={"number": 7, "labels": ["ready-to-implement", "factory:agent"]},
-                                        config={"verify": True, "features": {"off": ["spec-auto-advance", "skill-sources"]}}),
+                                        config={"verify": True, "features": {"off": ["spec-auto-advance", "skill-sources", "session-archive"]}}),
     "implement-config-local": dict(stage="implement", event_name="issues", event={"action": "labeled", "label": {"name": "ready-to-implement"}},
                                    item={"number": 8, "labels": ["ready-to-implement"]},
-                                   config={"stages": {"implement": {"runtime": "local"}}, "features": {"off": ["spec-auto-advance", "skill-sources"]}}),
+                                   config={"stages": {"implement": {"runtime": "local"}}, "features": {"off": ["spec-auto-advance", "skill-sources", "session-archive"]}}),
     "implement-wrong-label": dict(stage="implement", event_name="issues", event={"action": "labeled", "label": {"name": "factory:approved"}},
                                   item={"number": 8, "labels": ["ready-to-spec", "factory:approved"]}),
     "review-small": dict(stage="review", event_name="pull_request_target", event={"action": "opened"}, item=PR),
@@ -65,6 +65,9 @@ CASES = {
     "dependency-bump-breaking": dict(stage="dependency-bump", event_name="workflow_dispatch",
                                      params={"source_repo": "acme/lib", "package": "@acme/lib", "tag": "ts-v1.0.0", "breaking": True}),
     "notify-consumers": dict(stage="notify-consumers", event_name="push", params={"tag": "ts-v0.3.0", "package": "@acme/lib"}),
+    "review-archive": dict(stage="review", event_name="pull_request_target", event={"action": "opened"}, item=PR, private=True,
+                           config={"features": {"on": ["session-archive"], "off": ["spec-auto-advance"]},
+                                   "sessions": {"archive": "acme/factory-sessions"}}),
     "update-newer-line": dict(stage="triage", event_name="workflow_dispatch", params={"issue_number": 7}, item={"number": 7, "labels": []},
                               tags={"v0.2": "a" * 40, "v0.2.0": "a" * 40, "v0.3": "b" * 40, "v0.3.0": "b" * 40}),
 }
@@ -246,12 +249,52 @@ class Updates(unittest.TestCase):
         c["config"] = {"features": {"preview": "all"}}
         c["factory"]["ref"] = "refs/heads/main"
         u = plan.resolve(c)["update"]
-        self.assertEqual((u["needed"], u["newer_line"], u["pending"]), (True, None, ["spec-auto-advance", "skill-sources"]))
+        self.assertEqual((u["needed"], u["newer_line"], u["pending"]), (True, None, ["spec-auto-advance", "skill-sources", "session-archive"]))
 
     def test_check_false(self):
         c = ctx("update-newer-line")
         c["config"]["updates"] = {"check": False}
         self.assertFalse(plan.resolve(c)["update"]["needed"])
+
+
+class Sessions(unittest.TestCase):
+    def sessions(self, archive="acme/factory-sessions", on=True, private=True, **over):
+        c = ctx("review-small")
+        c["private"] = private
+        c["config"] = {"features": {"on" if on else "off": ["session-archive"], "off": ["spec-auto-advance"]} if on else
+                       {"off": ["spec-auto-advance", "session-archive"]}}
+        if archive:
+            c["config"]["sessions"] = {"archive": archive}
+        c.update(over)
+        return plan.resolve(c)["sessions"]
+
+    def test_kept_when_flag_on_and_archive_named(self):
+        self.assertEqual(self.sessions(), {"archive": "acme/factory-sessions", "reason": "config.yml sessions.archive",
+                                           "encrypt": False})
+
+    def test_public_repository_encrypts(self):
+        self.assertTrue(self.sessions(private=False)["encrypt"])
+
+    def test_not_kept(self):
+        for kw, why in ((dict(on=False), "flag session-archive is off"),
+                        (dict(archive=""), "names no sessions.archive"),
+                        (dict(archive="acme/app"), "repository itself"),
+                        (dict(archive="other/sessions"), "isn't owned by acme")):
+            with self.subTest(**kw):
+                s = self.sessions(**kw)
+                self.assertEqual((s["archive"], s["encrypt"]), ("", False))
+                self.assertIn(why, s["reason"])
+
+    def test_local_runtime_keeps_its_own(self):
+        c = ctx("spec-local-label")
+        c["config"] = {"features": {"on": ["session-archive"], "off": ["spec-auto-advance"]}, "sessions": {"archive": "acme/s"}}
+        self.assertIn("local runtime", plan.resolve(c)["sessions"]["reason"])
+
+    def test_archive_must_be_a_repository(self):
+        problems, _ = plan.validate_config({"sessions": {"archive": "not a repo"}}, load_pipeline(), load_features())
+        self.assertIn("sessions.archive must be a repository, owner/name", problems)
+        problems, _ = plan.validate_config({"sessions": {"keep": True}}, load_pipeline(), load_features())
+        self.assertIn("unknown key 'sessions.keep'", problems)
 
 
 class Config(unittest.TestCase):

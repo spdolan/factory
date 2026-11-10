@@ -48,10 +48,12 @@
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "flag_sources": {
+    "session-archive": "config.yml features.off",
     "skill-sources": "config.yml features.off",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
+    "session-archive": false,
     "skill-sources": false,
     "spec-auto-advance": false
   },
@@ -71,6 +73,11 @@
   "reason": "schedule",
   "run": true,
   "runtime": "actions",
+  "sessions": {
+    "archive": "",
+    "encrypt": false,
+    "reason": "flag session-archive is off"
+  },
   "settle_seconds": 0,
   "sources": {
     "agent.effort": "pipeline.yaml",

@@ -315,6 +315,7 @@ Two checks settle it. Private reusable-workflow sharing works on a personal acco
 | `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` | each repository | unchanged |
 | `FACTORY_READ_TOKEN` | each repository, **only while the factory is private** | fine-grained, the factory only, Contents: read. Set and renewed by `factory rotate-secrets` |
 | `FACTORY_SKILLS_TOKEN` (optional) | each repository with private sources in `.agents/skills.lock` | fine-grained, those source repositories only, Contents: read. Used by the plan job's skill-sources step alone (§4); agents never see it |
+| `FACTORY_ARCHIVE_KEY` | each **public** repository that keeps sessions ([memory.md](memory.md)) | a random value, not a token: encrypts the transcript between the agent and archive jobs, since a public repository's artifacts can be downloaded by anyone signed in |
 | `FACTORY_PRIVATE_NAMES` (optional) | the factory | names `check-references.sh` must never find, kept out of the code (it matters most if the factory goes public) |
 | `FACTORY_RELEASE_APP_CLIENT_ID`, `FACTORY_RELEASE_APP_PRIVATE_KEY` | the factory | a GitHub App you own, installed on the factory only: the one actor that may create or move `v*` tags. Used by the release workflow alone; no agent runs in the factory's CI |
 

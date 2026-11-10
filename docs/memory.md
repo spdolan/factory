@@ -1,6 +1,6 @@
 # Session archives and memory
 
-Status: proposal. Nothing here is built. It would ship in parts, each behind a preview flag ([rollout.md §6.1](rollout.md#61-flags)), and be tried in the test repository first. The decisions at the end come before any code.
+Status: proposal. Part 1, the session archive, is built behind the `session-archive` preview flag ([setup.md §4](setup.md#4-keep-sessions-optional)); the rest isn't. It ships in parts, each behind a preview flag ([rollout.md §6.1](rollout.md#61-flags)), and be tried in the test repository first. The decisions at the end come before any code.
 
 ## The problem
 
@@ -65,24 +65,22 @@ One archive per organization fits how the token works. A fine-grained token can 
 **What a run stores.**
 
 ```
-sessions/<repository>/<yyyy>/<mm>/<run id>-<stage>-<item>.jsonl.gz   # the redacted transcript
-runs/<repository>/<yyyy>/<mm>/<run id>-<stage>-<item>.json           # the run record
+sessions/<repository>/<yyyy>/<mm>/<run id>-<attempt>-<stage>-<item>.jsonl.gz   # the redacted transcript
+runs/<repository>/<yyyy>/<mm>/<run id>-<attempt>-<stage>-<item>.json           # the run record
 ```
 
 The run record holds the stage, item, factory commit, plan hash, tier and model, flags on, what apply did (state set, PR opened, review verdict), duration and cost. It doesn't hold what happened afterwards, such as your relabel, merge, close or revert. That's in GitHub, so the dream stage reads it there when it runs.
 
 One file per run means concurrent runs never edit the same file, so a push that loses a race just rebases and retries.
 
-**How it gets there.** The agent job uploads claude-code-action's `execution_file` as a short-lived artifact, next to the result. The action's own docs warn that this output can contain secrets. The apply job then:
+**How it gets there.** claude-code-action writes an execution file, a JSON array of the session's messages; the action's own docs warn that it can contain secrets. So it's redacted where it was written:
 
-1. downloads it
-2. redacts it: the token values apply knows, common secret patterns, and anything over a size cap per tool result
-3. checks through the API that the archive is still private, and refuses to push otherwise
-4. pushes both files with `FACTORY_GITHUB_TOKEN`
+1. **In the agent job, right after the agent,** a step redacts it: the run's secret values in plain and in the encodings git and HTTP use, common token and key patterns, and the middle of any string over 20,000 characters. The secrets are in that step's environment only so their values can be found. On a public repository, anyone signed in can download a run's artifacts, so the step also encrypts the transcript with `FACTORY_ARCHIVE_KEY`. A public repository without that secret keeps only the run record. The step uploads the result as a one-day artifact.
+2. **A new `archive` job**, after apply, builds the run record, checks through the API that the archive is private and has the same owner, and pushes both files with `FACTORY_GITHUB_TOKEN` through the contents API. It runs whether or not the agent succeeded, since failed runs are the most useful to learn from.
 
-Pushing with the secret, not the job's own token, means no stub needs `contents: write`. The triage and review stubs don't have it, and raising a stub's ceiling is a breaking change (rollout.md §6). So this part can ship in a 0.2.x patch behind the `session-archive` flag.
+Pushing with the secret, not the job's own token, means no stub needs `contents: write`. The triage and review stubs don't have it, and raising a stub's ceiling is a breaking change (rollout.md §6). `FACTORY_ARCHIVE_KEY` is an optional secret that older stubs don't pass, so they keep working; a public repository regenerates its stubs with `factory update` to use it.
 
-A failed archive push is logged in the run summary and doesn't fail the run.
+A failed archive step is shown in the run summary and never fails the run.
 
 Redaction has to happen before the push, because a secret committed to git is hard to remove. If one gets through, the fix is to rotate the secret, then rewrite or recreate the archive. A separate archive makes that last step possible without touching any working repository.
 
@@ -168,7 +166,7 @@ Harvest is manual at first. It could later run as a scheduled task on your machi
 
 | Step | What | Flag | Stub change |
 |---|---|---|---|
-| 1 | Session archive, run records, `doctor` checks | `session-archive` | none |
+| 1 | Session archive, run records, `doctor` checks (built) | `session-archive` | `FACTORY_ARCHIVE_KEY` passed through; optional |
 | 2 | Memory section in every stage prompt | `memory` | none |
 | 3 | `dream` stage, replacing improve-review | `dream` | the improve-review stub becomes the dream stub, through `factory update` |
 | 4 | `factory harvest` | none (a CLI command) | none |
