@@ -60,6 +60,24 @@ Such issues get `factory:agent`, and the next stage is dispatched immediately. E
 
 Some steps are always human: approving a spec (by adding `ready-to-implement`), merging, and adopting a breaking dependency release. Agents never push to the default branch.
 
+### Who enforces a rule: your version-control host, or the factory
+
+The factory's guarantees come in two kinds. They protect against different things, so each rule here should say which kind it is.
+
+- **Host-enforced.** The version-control host checks the rule on every change, whoever makes it: you, a collaborator, or the factory. It holds even if the factory has a bug. On GitHub this means rulesets and branch protection. Examples:
+  - The factory's `v*` tags can be moved only by its release workflow (`scripts/factory protect`).
+  - A repository's default branch can require a pull request and block force pushes (`doctor --protect-default-branch`).
+
+  On a private repository, GitHub needs Pro or Team for these; other hosts have their own equivalents and plans.
+- **Factory-enforced.** The factory checks before it acts, so the rule binds only what the factory itself does. Examples:
+  - triage's autonomy rules, and the Protected-paths and Human-only gates in `FACTORY.md`;
+  - the read-only agent job, with only the apply job able to write;
+  - auto-merge's `factory` mode ([docs/auto-merge.md](docs/auto-merge.md)).
+
+  You can still do any of these things by hand. Nothing on the host stops a factory bug from breaking such a rule, so factory-enforced rules fail closed on missing information, are covered by tests, and new ones start behind a preview flag or in shadow mode.
+
+Prefer host enforcement where your host and plan offer it. Where they don't, a factory-enforced rule is still worth having, as long as it's documented as one: auto-merge offers both modes for this reason ([Two enforcement modes](docs/auto-merge.md#two-enforcement-modes)).
+
 ## Models and cost
 
 | Stage | Default model | When it's bigger |
