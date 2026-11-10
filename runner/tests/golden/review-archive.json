@@ -51,13 +51,13 @@
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "flag_sources": {
-    "flag-lifecycle-check": "features.yaml (preview)",
+    "flag-lifecycle-check": "features.yaml (default)",
     "session-archive": "config.yml features.on",
     "skill-sources": "features.yaml (preview)",
     "spec-auto-advance": "config.yml features.off"
   },
   "flags": {
-    "flag-lifecycle-check": false,
+    "flag-lifecycle-check": true,
     "session-archive": true,
     "skill-sources": false,
     "spec-auto-advance": false
@@ -94,7 +94,7 @@
   "timeout": 30,
   "trigger": "pull request opened",
   "update": {
-    "body": "The factory has an update for this repository. Nothing changes until you act on it.\n\n- **Running:** `v0.2` (v0.2.0, `aaaaaaaaaaaa`)\n\n## Flags this repository hasn't decided on\n\nPut each one under `features.on` or `features.off` in `.github/factory/config.yml` to settle it.\n\n- [ ] `skill-sources` (preview, off until you opt in): Agent jobs also get the skills a repository pins in .agents/skills.lock (other skill repositories), fetched in the plan job so the agent job holds no token for them. Cost: none; the plan job downloads the pinned sources (a tarball per source) when the lock exists. `features: {on: [skill-sources]}`\n- [ ] `flag-lifecycle-check` (preview, off until you opt in): Test only: gates nothing. It checks that a flag moving from preview to default shows up in this issue, and will be removed without notice. Cost: none. `features: {on: [flag-lifecycle-check]}`\n\n_Opened by the factory's plan job. `updates: {check: false}` in config.yml turns this off._\n<!-- factory:update e60a9639979a -->\n",
+    "body": "The factory has an update for this repository. Nothing changes until you act on it.\n\n- **Running:** `v0.2` (v0.2.0, `aaaaaaaaaaaa`)\n\n## Flags this repository hasn't decided on\n\nPut each one under `features.on` or `features.off` in `.github/factory/config.yml` to settle it.\n\n- [ ] `skill-sources` (preview, off until you opt in): Agent jobs also get the skills a repository pins in .agents/skills.lock (other skill repositories), fetched in the plan job so the agent job holds no token for them. Cost: none; the plan job downloads the pinned sources (a tarball per source) when the lock exists. `features: {on: [skill-sources]}`\n- [ ] `flag-lifecycle-check` (default, on now): Test only: gates nothing. It checks that a flag moving from preview to default shows up in this issue, and will be removed without notice. Cost: none. `features: {off: [flag-lifecycle-check]}`\n\n_Opened by the factory's plan job. `updates: {check: false}` in config.yml turns this off._\n<!-- factory:update 042f6c7a2f35 -->\n",
     "current": "v0.2",
     "needed": true,
     "newer_line": null,
